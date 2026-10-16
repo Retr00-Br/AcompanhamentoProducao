@@ -197,7 +197,7 @@ df_diario = (
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM EXATA DE LINHAS POR DATA) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM DE REPETIÇÃO DE DIAS / LINHAS) ---
 if df_rom is not None and not df_rom.empty:
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
@@ -207,7 +207,7 @@ if df_rom is not None and not df_rom.empty:
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
   df_rom = df_rom[df_rom["DATA_ROM"] >= "2026-01-01"]
 
-  # Contagem exata de linhas por data de romaneio
+  # Contagem exata de quantas vezes cada dia se repete na planilha de romaneios
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
       .size()
@@ -296,7 +296,7 @@ fig_unificado.update_layout(
 
 st.plotly_chart(fig_unificado, use_container_width=True)
 
-# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x Expedições) ---
+# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x Expedições por repetição de dias) ---
 st.subheader(
     "🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições (Romaneios)"
 )
