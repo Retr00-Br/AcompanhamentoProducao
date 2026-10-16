@@ -148,6 +148,7 @@ df[col_data] = pd.to_datetime(df[col_data], errors="coerce")
 df = df.dropna(subset=[col_data])
 df["Ano_Semana"] = df[col_data].dt.strftime("%Y - Semana %V")
 
+# Filtro de Semanas
 semanas_disponiveis = sorted(df["Ano_Semana"].unique(), reverse=True)
 semanas_selecionadas = st.sidebar.multiselect(
     "Filtrar por Semana(s)",
@@ -155,10 +156,26 @@ semanas_selecionadas = st.sidebar.multiselect(
     default=semanas_disponiveis,
 )
 
+# Filtro de Separadores
+separadores_disponiveis = (
+    sorted(df["SEPARADOR"].dropna().astype(str).unique())
+    if "SEPARADOR" in df.columns
+    else []
+)
+separadores_selecionados = st.sidebar.multiselect(
+    "Filtrar por Separador(es)",
+    options=separadores_disponiveis,
+    default=separadores_disponiveis,
+)
+
+# Aplicando Filtros no DataFrame
+df_filtrado = df.copy()
 if semanas_selecionadas:
-  df_filtrado = df[df["Ano_Semana"].isin(semanas_selecionadas)]
-else:
-  df_filtrado = df
+  df_filtrado = df_filtrado[df_filtrado["Ano_Semana"].isin(semanas_selecionadas)]
+if separadores_selecionados and "SEPARADOR" in df.columns:
+  df_filtrado = df_filtrado[
+      df_filtrado["SEPARADOR"].astype(str).isin(separadores_selecionados)
+  ]
 
 # --- PROCESSAMENTO DOS DADOS DIÁRIOS DE PRODUÇÃO ---
 df_diario = (
@@ -173,7 +190,6 @@ df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
 # --- PROCESSAMENTO DOS ROMANEIOS (EXPEDIÇÃO) ---
 if df_rom is not None and not df_rom.empty:
-  # Garantir localização correta das colunas por nome
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
   )
@@ -188,7 +204,6 @@ if df_rom is not None and not df_rom.empty:
   )
   df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
 
-  # Mesclar produção com romaneios por data
   df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="outer").fillna(
       0
   )
