@@ -197,7 +197,7 @@ df_diario = (
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM EXATA DE LINHAS/DATAS) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM EXATA DE LINHAS POR DATA) ---
 if df_rom is not None and not df_rom.empty:
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
@@ -215,7 +215,7 @@ if df_rom is not None and not df_rom.empty:
   )
   df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
 
-  df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="outer").fillna(
+  df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="left").fillna(
       0
   )
   df_diario = df_diario.sort_values("Data").reset_index(drop=True)
