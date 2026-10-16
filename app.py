@@ -90,19 +90,13 @@ file_path_rom = "DadosRomaneios.xlsx"
 
 @st.cache_data
 def load_data():
-  df_prod = pd.read_excel(file_path_prod) if os.path.exists(
-      file_path_prod
-  ) else None
+  df_prod = None
+  if os.path.exists(file_path_prod):
+    df_prod = pd.read_excel(file_path_prod, sheet_name="SEPARAÇÃO")
 
   df_rom = None
   if os.path.exists(file_path_rom):
-    # Lendo DadosRomaneios.xlsx considerando que a primeira linha é o cabeçalho real
     df_rom = pd.read_excel(file_path_rom, header=0)
-    # Identificar colunas corretas de Data e Número da Nota
-    # Coluna 0: Dt. Romaneio, Coluna 6: Num.NF (com base na estrutura padrão)
-    if df_rom.shape[1] >= 7:
-      df_rom = df_rom.iloc[:, [0, 6]]
-      df_rom.columns = ["DATA_ROM", "NF_ROM"]
 
   return df_prod, df_rom
 
@@ -178,17 +172,23 @@ df_diario = (
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
 # --- PROCESSAMENTO DOS ROMANEIOS (EXPEDIÇÃO) ---
-if df_rom is not None:
-  df_rom["DATA_ROM"] = pd.to_datetime(df_rom["DATA_ROM"], errors="coerce")
+if df_rom is not None and not df_rom.empty:
+  # Garantir localização correta das colunas por nome
+  col_dt_rom = (
+      "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
+  )
+  col_nf_rom = "Num.NF" if "Num.NF" in df_rom.columns else df_rom.columns[6]
+
+  df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
-      .agg(Total_Romaneios=("NF_ROM", "nunique"))
+      .agg(Total_Romaneios=(col_nf_rom, "nunique"))
       .reset_index()
   )
   df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
 
-  # Mesclar produção com romaneios por data (garantindo união correta)
+  # Mesclar produção com romaneios por data
   df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="outer").fillna(
       0
   )
