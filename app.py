@@ -151,9 +151,10 @@ col_sku = st.sidebar.selectbox(
     ),
 )
 
-# Tratamento da data de produção
+# Tratamento da data de produção (removendo nulos e datas inválidas antigas)
 df[col_data] = pd.to_datetime(df[col_data], errors="coerce")
 df = df.dropna(subset=[col_data])
+df = df[df[col_data] >= "2026-01-01"]  # Garante apenas dados vigentes de 2026
 df["Ano_Semana"] = df[col_data].dt.strftime("%Y - Semana %V")
 
 # Filtro de Semanas
@@ -196,23 +197,19 @@ df_diario = (
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (USANDO DATA DE EMISSÃO OU ROMANEIO) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (USANDO EXCLUSIVAMENTE 'Dt. Romaneio') ---
 if df_rom is not None and not df_rom.empty:
-  # Identifica a coluna correta de data nos romaneios ('Emissão' ou 'Dt. Romaneio')
   col_dt_rom = (
-      "Emissão"
-      if "Emissão" in df_rom.columns
-      else (
-          "Dt. Romaneio"
-          if "Dt. Romaneio" in df_rom.columns
-          else df_rom.columns[0]
-      )
+      "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
   )
 
   df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
+  df_rom = df_rom[
+      df_rom["DATA_ROM"] >= "2026-01-01"
+  ]  # Filtra apenas datas válidas de 2026
 
-  # Contagem da frequência de repetição das datas na expedição
+  # Contagem da frequência de repetição das datas de romaneio
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
       .size()
