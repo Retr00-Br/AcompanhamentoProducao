@@ -186,7 +186,7 @@ if separadores_selecionados and "SEPARADOR" in df.columns:
       df_filtrado["SEPARADOR"].astype(str).isin(separadores_selecionados)
   ]
 
-# --- PROCESSAMENTO DIÁRIO BASEADO EM PEDIDOS DE VENDA (PV) ---
+# --- PROCESSAMENTO DIÁRIO DE PRODUÇÃO (PVs e SKUs) ---
 df_diario = (
     df_filtrado.groupby(df_filtrado[col_data].dt.date)
     .agg(
@@ -197,7 +197,7 @@ df_diario = (
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM EXATA POR FREQUÊNCIA DE DATA) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM DE QUANTAS VEZES CADA DATA APARECE) ---
 if df_rom is not None and not df_rom.empty:
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
@@ -207,6 +207,7 @@ if df_rom is not None and not df_rom.empty:
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
   df_rom = df_rom[df_rom["DATA_ROM"] >= "2026-01-01"]
 
+  # Conta exatamente a frequência de aparição de cada data na planilha de romaneios
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
       .size()
@@ -221,7 +222,7 @@ if df_rom is not None and not df_rom.empty:
 else:
   df_diario["Total_Expedidos"] = 0
 
-# Garante conversão de Data para string formatada para evitar desalinhamento no eixo X do Plotly
+# Converte data para string para exibição limpa no eixo X
 df_diario["Data_Str"] = pd.to_datetime(df_diario["Data"]).dt.strftime(
     "%Y-%m-%d"
 )
@@ -297,7 +298,7 @@ fig_unificado.update_layout(
 st.plotly_chart(fig_unificado, use_container_width=True)
 
 
-# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x Expedições em Romaneios) ---
+# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x Expedições por contagem de datas) ---
 st.subheader(
     "🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições (Romaneios)"
 )
