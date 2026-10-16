@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="Dashboard - Dados da Logística", page_icon="📦", layout="wide"
 )
 
-# --- ESTILIZAÇÃO CSS CUSTOMIZADA (Contraste Máximo e Tema Escuro Corporativo) ---
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
 st.markdown(
     """
     <style>
@@ -83,30 +83,43 @@ with col_logo2:
 
 st.divider()
 
-# --- CARREGAMENTO DOS DADOS ---
-file_path_prod = "Operação Rambo (1) (1).xlsx"
-file_path_rom = "DadosRomaneios.xlsx"
+# --- UPLOAD DINÂMICO DE ARQUIVOS (Garante dados 100% atualizados) ---
+st.sidebar.header("📁 Upload de Planilhas Atualizadas")
+uploaded_prod = st.sidebar.file_uploader(
+    "Envie a planilha de Produção (.xlsx)", type=["xlsx"]
+)
+uploaded_rom = st.sidebar.file_uploader(
+    "Envie a planilha de Romaneios (.xlsx)", type=["xlsx"]
+)
 
 
 @st.cache_data
-def load_data():
-  df_prod = None
-  if os.path.exists(file_path_prod):
-    df_prod = pd.read_excel(file_path_prod, sheet_name="SEPARAÇÃO")
+def load_data(file_p, file_r):
+  df_prod, df_rom = None, None
 
-  df_rom = None
-  if os.path.exists(file_path_rom):
-    df_rom = pd.read_excel(file_path_rom, header=0)
+  # Carregar Produção
+  if file_p is not None:
+    df_prod = pd.read_excel(file_p, sheet_name="SEPARAÇÃO")
+  elif os.path.exists("Operação Rambo (1) (1).xlsx"):
+    df_prod = pd.read_excel(
+        "Operação Rambo (1) (1).xlsx", sheet_name="SEPARAÇÃO"
+    )
+
+  # Carregar Romaneios
+  if file_r is not None:
+    df_rom = pd.read_excel(file_r, header=0)
+  elif os.path.exists("DadosRomaneios.xlsx"):
+    df_rom = pd.read_excel("DadosRomaneios.xlsx", header=0)
 
   return df_prod, df_rom
 
 
-df, df_rom = load_data()
+df, df_rom = load_data(uploaded_prod, uploaded_rom)
 
 if df is None:
-  st.error(
-      "A planilha principal 'Operação Rambo (1) (1).xlsx' não foi encontrada na"
-      " pasta!"
+  st.warning(
+      "Por favor, faça o upload da planilha de produção na barra lateral para"
+      " iniciar."
   )
   st.stop()
 
@@ -168,7 +181,7 @@ separadores_selecionados = st.sidebar.multiselect(
     default=separadores_disponiveis,
 )
 
-# Aplicando Filtros no DataFrame
+# Aplicando Filtros
 df_filtrado = df.copy()
 if semanas_selecionadas:
   df_filtrado = df_filtrado[df_filtrado["Ano_Semana"].isin(semanas_selecionadas)]
@@ -281,7 +294,7 @@ fig_unificado.update_layout(
 st.plotly_chart(fig_unificado, use_container_width=True)
 
 
-# --- GRÁFICO 2: COMPARATIVO (Notas Produzidas x Notas em Romaneios / Expedição) ---
+# --- GRÁFICO 2: COMPARATIVO (Notas Produzidas vs. Notas em Romaneios / Expedição) ---
 st.subheader("🚚 Comparativo: Notas Produzidas vs. Notas em Romaneios (Expedição)")
 
 fig_comp = go.Figure()
