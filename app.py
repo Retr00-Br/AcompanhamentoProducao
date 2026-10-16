@@ -252,11 +252,12 @@ fig_unificado.update_layout(
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     xaxis=dict(title="Data"),
     yaxis=dict(
-        title="<b>Quantidade de Notas</b>", titlefont=dict(color="#48cae4")
+        title=dict(
+            text="<b>Quantidade de Notas</b>", font=dict(color="#48cae4")
+        )
     ),
     yaxis2=dict(
-        title="<b>Total de SKUs</b>",
-        titlefont=dict(color="#f77f00"),
+        title=dict(text="<b>Total de SKUs</b>", font=dict(color="#f77f00")),
         overlaying="y",
         side="right",
         showgrid=False,
@@ -265,7 +266,6 @@ fig_unificado.update_layout(
 )
 
 st.plotly_chart(fig_unificado, use_container_width=True)
-
 
 # --- GRÁFICO 2: COMPARATIVO (Notas Produzidas x Notas em Romaneios / Expedição) ---
 st.subheader("🚚 Comparativo: Notas Produzidas vs. Notas em Romaneios (Expedição)")
