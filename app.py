@@ -35,7 +35,6 @@ st.markdown(
         color: #ffffff !important;
         font-weight: 700;
     }
-    /* Estilo corrigido para títulos com alta visibilidade */
     h1, h2, h3 {
         color: #ffffff !important;
         font-weight: 800;
@@ -54,7 +53,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- CABEÇALHO E LOGOS COM FUNDO ADEQUADO ---
+# --- CABEÇALHO E LOGOS ---
 col_logo1, col_titulo, col_logo2 = st.columns([1.2, 3.6, 1.2])
 
 with col_logo1:
@@ -72,7 +71,6 @@ with col_titulo:
   )
 
 with col_logo2:
-  # Se a logo da Higimed for transparente ou branca, colocamos um fundo escuro/claro para realçar
   if os.path.exists("logo2.png"):
     st.markdown(
         '<div class="logo-container" style="background-color: #1c2541;">',
@@ -85,7 +83,7 @@ with col_logo2:
 
 st.divider()
 
-# --- CARREGAMENTO DOS DADOS DE PRODUÇÃO ---
+# --- CARREGAMENTO DOS DADOS ---
 file_path_prod = "Operação Rambo (1) (1).xlsx"
 file_path_rom = "DadosRomaneios.xlsx"
 
@@ -96,13 +94,14 @@ def load_data():
       file_path_prod
   ) else None
 
-  # Carregar Romaneios (DadosRomaneios.xlsx possui colunas sem cabeçalho explícito)
   df_rom = None
   if os.path.exists(file_path_rom):
-    df_rom = pd.read_excel(file_path_rom, header=None)
-    # Padronizar colunas com base na estrutura detectada: [Data, ClienteLoja, NomeFantasia, NumNF, VlNF]
-    if df_rom.shape[1] >= 4:
-      df_rom = df_rom.iloc[:, [0, 3]]  # Data e Número da Nota
+    # Lendo DadosRomaneios.xlsx considerando que a primeira linha é o cabeçalho real
+    df_rom = pd.read_excel(file_path_rom, header=0)
+    # Identificar colunas corretas de Data e Número da Nota
+    # Coluna 0: Dt. Romaneio, Coluna 6: Num.NF (com base na estrutura padrão)
+    if df_rom.shape[1] >= 7:
+      df_rom = df_rom.iloc[:, [0, 6]]
       df_rom.columns = ["DATA_ROM", "NF_ROM"]
 
   return df_prod, df_rom
@@ -189,10 +188,11 @@ if df_rom is not None:
   )
   df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
 
-  # Mesclar produção com romaneios por data
-  df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="left").fillna(
-      {"Total_Romaneios": 0}
+  # Mesclar produção com romaneios por data (garantindo união correta)
+  df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="outer").fillna(
+      0
   )
+  df_diario = df_diario.sort_values("Data").reset_index(drop=True)
 else:
   df_diario["Total_Romaneios"] = 0
 
@@ -216,12 +216,11 @@ with kpi3:
 
 st.markdown("")
 
-# --- GRÁFICO 1: UNIFICADO (Notas Produzidas x SKUs no mesmo gráfico - Eixo Duplo) ---
+# --- GRÁFICO 1: UNIFICADO (Notas Produzidas x SKUs - Eixo Duplo) ---
 st.subheader("📊 Produção Diária: Notas vs. SKUs")
 
 fig_unificado = go.Figure()
 
-# Barras para Notas Produzidas
 fig_unificado.add_trace(
     go.Bar(
         x=df_diario["Data"],
@@ -232,7 +231,6 @@ fig_unificado.add_trace(
     )
 )
 
-# Linha para SKUs Produzidos (Eixo Y secundário)
 fig_unificado.add_trace(
     go.Scatter(
         x=df_diario["Data"],
@@ -266,6 +264,7 @@ fig_unificado.update_layout(
 )
 
 st.plotly_chart(fig_unificado, use_container_width=True)
+
 
 # --- GRÁFICO 2: COMPARATIVO (Notas Produzidas x Notas em Romaneios / Expedição) ---
 st.subheader("🚚 Comparativo: Notas Produzidas vs. Notas em Romaneios (Expedição)")
