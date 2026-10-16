@@ -67,7 +67,8 @@ with col_logo1:
 with col_titulo:
   st.title("Dashboard de Produção - Operação Rambo")
   st.markdown(
-      "Controle diário de **Notas**, **SKUs** e **Expedição (Romaneios)**."
+      "Controle diário de **Produção/Notas**, **SKUs** e **Expedição"
+      " (Romaneios)**."
   )
 
 with col_logo2:
@@ -83,7 +84,7 @@ with col_logo2:
 
 st.divider()
 
-# --- UPLOAD DINÂMICO DE ARQUIVOS (Garante dados 100% atualizados) ---
+# --- UPLOAD DINÂMICO DE ARQUIVOS ---
 st.sidebar.header("📁 Upload de Planilhas Atualizadas")
 uploaded_prod = st.sidebar.file_uploader(
     "Envie a planilha de Produção (.xlsx)", type=["xlsx"]
@@ -97,7 +98,6 @@ uploaded_rom = st.sidebar.file_uploader(
 def load_data(file_p, file_r):
   df_prod, df_rom = None, None
 
-  # Carregar Produção
   if file_p is not None:
     df_prod = pd.read_excel(file_p, sheet_name="SEPARAÇÃO")
   elif os.path.exists("Operação Rambo (1) (1).xlsx"):
@@ -105,7 +105,6 @@ def load_data(file_p, file_r):
         "Operação Rambo (1) (1).xlsx", sheet_name="SEPARAÇÃO"
     )
 
-  # Carregar Romaneios
   if file_r is not None:
     df_rom = pd.read_excel(file_r, header=0)
   elif os.path.exists("DadosRomaneios.xlsx"):
@@ -137,8 +136,9 @@ col_data = st.sidebar.selectbox(
         else 0
     ),
 )
+# Usar PV ou ID de linha como padrão se NF estiver em branco
 col_nota = st.sidebar.selectbox(
-    "Coluna de Notas",
+    "Coluna de Referência (Notas/Pedidos)",
     colunas_disponiveis,
     index=(
         colunas_disponiveis.index("NF")
@@ -191,10 +191,14 @@ if separadores_selecionados and "SEPARADOR" in df.columns:
   ]
 
 # --- PROCESSAMENTO DOS DADOS DIÁRIOS DE PRODUÇÃO ---
+# Contamos registros válidos (linhas de pedidos/produção) para garantir contagem correta mesmo sem NF emitida
 df_diario = (
     df_filtrado.groupby(df_filtrado[col_data].dt.date)
     .agg(
-        Total_Notas=(col_nota, "nunique"),
+        Total_Notas=(
+            col_nota,
+            "count",
+        ),  # Mudado para 'count' para englobar todas as produções diárias
         Total_SKUs=(col_sku, "sum"),
     )
     .reset_index()
@@ -228,7 +232,7 @@ else:
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
   st.metric(
-      label="📄 Total de Notas Produzidas",
+      label="📄 Total de Produção/Notas",
       value=int(df_diario["Total_Notas"].sum()),
   )
 with kpi2:
@@ -253,7 +257,7 @@ fig_unificado.add_trace(
     go.Bar(
         x=df_diario["Data"],
         y=df_diario["Total_Notas"],
-        name="Notas Produzidas",
+        name="Produção / Notas",
         marker_color="#48cae4",
         yaxis="y1",
     )
@@ -279,7 +283,7 @@ fig_unificado.update_layout(
     xaxis=dict(title="Data"),
     yaxis=dict(
         title=dict(
-            text="<b>Quantidade de Notas</b>", font=dict(color="#48cae4")
+            text="<b>Quantidade de Produção/Notas</b>", font=dict(color="#48cae4")
         )
     ),
     yaxis2=dict(
@@ -295,7 +299,9 @@ st.plotly_chart(fig_unificado, use_container_width=True)
 
 
 # --- GRÁFICO 2: COMPARATIVO (Notas Produzidas vs. Notas em Romaneios / Expedição) ---
-st.subheader("🚚 Comparativo: Notas Produzidas vs. Notas em Romaneios (Expedição)")
+st.subheader(
+    "🚚 Comparativo: Produção/Notas vs. Notas em Romaneios (Expedição)"
+)
 
 fig_comp = go.Figure()
 
@@ -303,7 +309,7 @@ fig_comp.add_trace(
     go.Bar(
         x=df_diario["Data"],
         y=df_diario["Total_Notas"],
-        name="Notas Produzidas",
+        name="Produção / Notas",
         marker_color="#2a9d8f",
     )
 )
@@ -324,7 +330,7 @@ fig_comp.update_layout(
     paper_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     xaxis=dict(title="Data"),
-    yaxis=dict(title="Quantidade de Notas"),
+    yaxis=dict(title="Quantidade"),
     margin=dict(l=40, r=40, t=40, b=40),
 )
 
