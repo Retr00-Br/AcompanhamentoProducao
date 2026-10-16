@@ -67,8 +67,8 @@ with col_logo1:
 with col_titulo:
   st.title("Dashboard de Produção - Operação Rambo")
   st.markdown(
-      "Controle diário de **Produção/Notas**, **SKUs** e **Expedição"
-      " (Romaneios)**."
+      "Controle diário baseado em **Pedidos de Venda (PV)**, **SKUs** e"
+      " **Expedição (Romaneios)**."
   )
 
 with col_logo2:
@@ -136,15 +136,11 @@ col_data = st.sidebar.selectbox(
         else 0
     ),
 )
-# Usar PV ou ID de linha como padrão se NF estiver em branco
-col_nota = st.sidebar.selectbox(
-    "Coluna de Referência (Notas/Pedidos)",
-    colunas_disponiveis,
-    index=(
-        colunas_disponiveis.index("NF")
-        if "NF" in colunas_disponiveis
-        else min(1, len(colunas_disponiveis) - 1)
-    ),
+# Fixado obrigatoriamente em PV conforme instrução
+col_pv = (
+    "PV"
+    if "PV" in colunas_disponiveis
+    else st.sidebar.selectbox("Coluna de Pedido de Venda (PV)", colunas_disponiveis)
 )
 col_sku = st.sidebar.selectbox(
     "Coluna de SKUs",
@@ -190,33 +186,35 @@ if separadores_selecionados and "SEPARADOR" in df.columns:
       df_filtrado["SEPARADOR"].astype(str).isin(separadores_selecionados)
   ]
 
-# --- PROCESSAMENTO DOS DADOS DIÁRIOS DE PRODUÇÃO ---
-# Contamos registros válidos (linhas de pedidos/produção) para garantir contagem correta mesmo sem NF emitida
+# --- PROCESSAMENTO DIÁRIO BASEADO EM PEDIDOS DE VENDA (PV) ---
 df_diario = (
     df_filtrado.groupby(df_filtrado[col_data].dt.date)
     .agg(
-        Total_Notas=(
-            col_nota,
+        Total_PVs=(
+            col_pv,
             "count",
-        ),  # Mudado para 'count' para englobar todas as produções diárias
+        ),  # Contagem total de Pedidos de Venda produzidos por dia
         Total_SKUs=(col_sku, "sum"),
     )
     .reset_index()
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (EXPEDIÇÃO) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (CRUZAMENTO DE EXPEDIÇÃO X PVs) ---
 if df_rom is not None and not df_rom.empty:
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
   )
-  col_nf_rom = "Num.NF" if "Num.NF" in df_rom.columns else df_rom.columns[6]
+  col_pv_rom = (
+      "Num.PV" if "Num.PV" in df_rom.columns else df_rom.columns[5]
+  )  # Coluna de PV nos Romaneios
 
   df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
+
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
-      .agg(Total_Romaneios=(col_nf_rom, "nunique"))
+      .agg(Total_Expedidos=(col_pv_rom, "nunique"))
       .reset_index()
   )
   df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
@@ -226,14 +224,14 @@ if df_rom is not None and not df_rom.empty:
   )
   df_diario = df_diario.sort_values("Data").reset_index(drop=True)
 else:
-  df_diario["Total_Romaneios"] = 0
+  df_diario["Total_Expedidos"] = 0
 
 # --- KPIs PRINCIPAIS ---
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
   st.metric(
-      label="📄 Total de Produção/Notas",
-      value=int(df_diario["Total_Notas"].sum()),
+      label="📄 Total de PVs Produzidos",
+      value=int(df_diario["Total_PVs"].sum()),
   )
 with kpi2:
   st.metric(
@@ -242,22 +240,22 @@ with kpi2:
   )
 with kpi3:
   st.metric(
-      label="🚚 Total de Notas em Romaneios",
-      value=int(df_diario["Total_Romaneios"].sum()),
+      label="🚚 Total de PVs Expedidos (Romaneios)",
+      value=int(df_diario["Total_Expedidos"].sum()),
   )
 
 st.markdown("")
 
-# --- GRÁFICO 1: UNIFICADO (Notas Produzidas x SKUs - Eixo Duplo) ---
-st.subheader("📊 Produção Diária: Notas vs. SKUs")
+# --- GRÁFICO 1: UNIFICADO (PVs Produzidos x SKUs - Eixo Duplo) ---
+st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs")
 
 fig_unificado = go.Figure()
 
 fig_unificado.add_trace(
     go.Bar(
         x=df_diario["Data"],
-        y=df_diario["Total_Notas"],
-        name="Produção / Notas",
+        y=df_diario["Total_PVs"],
+        name="Pedidos de Venda (PV)",
         marker_color="#48cae4",
         yaxis="y1",
     )
@@ -283,7 +281,8 @@ fig_unificado.update_layout(
     xaxis=dict(title="Data"),
     yaxis=dict(
         title=dict(
-            text="<b>Quantidade de Produção/Notas</b>", font=dict(color="#48cae4")
+            text="<b>Qtd de Pedidos de Venda (PV)</b>",
+            font=dict(color="#48cae4"),
         )
     ),
     yaxis2=dict(
@@ -298,9 +297,9 @@ fig_unificado.update_layout(
 st.plotly_chart(fig_unificado, use_container_width=True)
 
 
-# --- GRÁFICO 2: COMPARATIVO (Notas Produzidas vs. Notas em Romaneios / Expedição) ---
+# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x PVs Expedidos em Romaneios) ---
 st.subheader(
-    "🚚 Comparativo: Produção/Notas vs. Notas em Romaneios (Expedição)"
+    "🚚 Comparativo: Pedidos Produzidos (PV) vs. Pedidos Expedidos (Romaneios)"
 )
 
 fig_comp = go.Figure()
@@ -308,8 +307,8 @@ fig_comp = go.Figure()
 fig_comp.add_trace(
     go.Bar(
         x=df_diario["Data"],
-        y=df_diario["Total_Notas"],
-        name="Produção / Notas",
+        y=df_diario["Total_PVs"],
+        name="Pedidos Produzidos (PV)",
         marker_color="#2a9d8f",
     )
 )
@@ -317,8 +316,8 @@ fig_comp.add_trace(
 fig_comp.add_trace(
     go.Bar(
         x=df_diario["Data"],
-        y=df_diario["Total_Romaneios"],
-        name="Notas em Romaneios (Expedição)",
+        y=df_diario["Total_Expedidos"],
+        name="Pedidos Expedidos (Romaneios)",
         marker_color="#e76f51",
     )
 )
@@ -330,7 +329,7 @@ fig_comp.update_layout(
     paper_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     xaxis=dict(title="Data"),
-    yaxis=dict(title="Quantidade"),
+    yaxis=dict(title="Quantidade de Pedidos (PV)"),
     margin=dict(l=40, r=40, t=40, b=40),
 )
 
