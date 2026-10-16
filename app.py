@@ -196,16 +196,23 @@ df_diario = (
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM DE REPETIÇÃO DE DATAS DE EXPEDIÇÃO) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (USANDO DATA DE EMISSÃO OU ROMANEIO) ---
 if df_rom is not None and not df_rom.empty:
+  # Identifica a coluna correta de data nos romaneios ('Emissão' ou 'Dt. Romaneio')
   col_dt_rom = (
-      "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
+      "Emissão"
+      if "Emissão" in df_rom.columns
+      else (
+          "Dt. Romaneio"
+          if "Dt. Romaneio" in df_rom.columns
+          else df_rom.columns[0]
+      )
   )
 
   df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
 
-  # Contagem da frequência de aparição de cada data de romaneio (expedição)
+  # Contagem da frequência de repetição das datas na expedição
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
       .size()
