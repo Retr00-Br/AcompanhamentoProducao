@@ -151,10 +151,10 @@ col_sku = st.sidebar.selectbox(
     ),
 )
 
-# Tratamento da data de produção (removendo nulos e datas inválidas antigas)
+# Tratamento da data de produção
 df[col_data] = pd.to_datetime(df[col_data], errors="coerce")
 df = df.dropna(subset=[col_data])
-df = df[df[col_data] >= "2026-01-01"]  # Garante apenas dados vigentes de 2026
+df = df[df[col_data] >= "2026-01-01"]
 df["Ano_Semana"] = df[col_data].dt.strftime("%Y - Semana %V")
 
 # Filtro de Semanas
@@ -197,7 +197,7 @@ df_diario = (
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (USANDO EXCLUSIVAMENTE 'Dt. Romaneio') ---
+# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM EXATA POR FREQUÊNCIA DE DATA) ---
 if df_rom is not None and not df_rom.empty:
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
@@ -205,11 +205,8 @@ if df_rom is not None and not df_rom.empty:
 
   df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
-  df_rom = df_rom[
-      df_rom["DATA_ROM"] >= "2026-01-01"
-  ]  # Filtra apenas datas válidas de 2026
+  df_rom = df_rom[df_rom["DATA_ROM"] >= "2026-01-01"]
 
-  # Contagem da frequência de repetição das datas de romaneio
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
       .size()
@@ -223,6 +220,11 @@ if df_rom is not None and not df_rom.empty:
   df_diario = df_diario.sort_values("Data").reset_index(drop=True)
 else:
   df_diario["Total_Expedidos"] = 0
+
+# Garante conversão de Data para string formatada para evitar desalinhamento no eixo X do Plotly
+df_diario["Data_Str"] = pd.to_datetime(df_diario["Data"]).dt.strftime(
+    "%Y-%m-%d"
+)
 
 # --- KPIs PRINCIPAIS ---
 kpi1, kpi2, kpi3 = st.columns(3)
@@ -251,7 +253,7 @@ fig_unificado = go.Figure()
 
 fig_unificado.add_trace(
     go.Bar(
-        x=df_diario["Data"],
+        x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Pedidos de Venda (PV)",
         marker_color="#48cae4",
@@ -261,7 +263,7 @@ fig_unificado.add_trace(
 
 fig_unificado.add_trace(
     go.Scatter(
-        x=df_diario["Data"],
+        x=df_diario["Data_Str"],
         y=df_diario["Total_SKUs"],
         name="Total de SKUs",
         mode="lines+markers",
@@ -276,7 +278,7 @@ fig_unificado.update_layout(
     plot_bgcolor="rgba(0,0,0,0)",
     paper_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    xaxis=dict(title="Data"),
+    xaxis=dict(title="Data", type="category"),
     yaxis=dict(
         title=dict(
             text="<b>Qtd de Pedidos de Venda (PV)</b>",
@@ -304,7 +306,7 @@ fig_comp = go.Figure()
 
 fig_comp.add_trace(
     go.Bar(
-        x=df_diario["Data"],
+        x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Pedidos Produzidos (PV)",
         marker_color="#2a9d8f",
@@ -313,7 +315,7 @@ fig_comp.add_trace(
 
 fig_comp.add_trace(
     go.Bar(
-        x=df_diario["Data"],
+        x=df_diario["Data_Str"],
         y=df_diario["Total_Expedidos"],
         name="Expedições (Romaneios)",
         marker_color="#e76f51",
@@ -326,7 +328,7 @@ fig_comp.update_layout(
     plot_bgcolor="rgba(0,0,0,0)",
     paper_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    xaxis=dict(title="Data"),
+    xaxis=dict(title="Data", type="category"),
     yaxis=dict(title="Quantidade"),
     margin=dict(l=40, r=40, t=40, b=40),
 )
@@ -335,4 +337,7 @@ st.plotly_chart(fig_comp, use_container_width=True)
 
 # --- TABELA DETALHADA ---
 with st.expander("🔍 Visualizar Dados Tabulares Consolidados"):
-  st.dataframe(df_diario, use_container_width=True)
+  st.dataframe(
+      df_diario[["Data", "Total_PVs", "Total_SKUs", "Total_Expedidos"]],
+      use_container_width=True,
+  )
