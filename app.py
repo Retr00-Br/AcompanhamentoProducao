@@ -136,7 +136,6 @@ col_data = st.sidebar.selectbox(
         else 0
     ),
 )
-# Fixado obrigatoriamente em PV conforme instrução
 col_pv = (
     "PV"
     if "PV" in colunas_disponiveis
@@ -190,32 +189,27 @@ if separadores_selecionados and "SEPARADOR" in df.columns:
 df_diario = (
     df_filtrado.groupby(df_filtrado[col_data].dt.date)
     .agg(
-        Total_PVs=(
-            col_pv,
-            "count",
-        ),  # Contagem total de Pedidos de Venda produzidos por dia
+        Total_PVs=(col_pv, "count"),
         Total_SKUs=(col_sku, "sum"),
     )
     .reset_index()
 )
 df_diario.rename(columns={col_data: "Data"}, inplace=True)
 
-# --- PROCESSAMENTO DOS ROMANEIOS (CRUZAMENTO DE EXPEDIÇÃO X PVs) ---
+# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM DE REPETIÇÃO DE DATAS DE EXPEDIÇÃO) ---
 if df_rom is not None and not df_rom.empty:
   col_dt_rom = (
       "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
   )
-  col_pv_rom = (
-      "Num.PV" if "Num.PV" in df_rom.columns else df_rom.columns[5]
-  )  # Coluna de PV nos Romaneios
 
   df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
   df_rom = df_rom.dropna(subset=["DATA_ROM"])
 
+  # Contagem da frequência de aparição de cada data de romaneio (expedição)
   df_rom_diario = (
       df_rom.groupby(df_rom["DATA_ROM"].dt.date)
-      .agg(Total_Expedidos=(col_pv_rom, "nunique"))
-      .reset_index()
+      .size()
+      .reset_index(name="Total_Expedidos")
   )
   df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
 
@@ -240,7 +234,7 @@ with kpi2:
   )
 with kpi3:
   st.metric(
-      label="🚚 Total de PVs Expedidos (Romaneios)",
+      label="🚚 Total de Expedições (Romaneios)",
       value=int(df_diario["Total_Expedidos"].sum()),
   )
 
@@ -297,9 +291,9 @@ fig_unificado.update_layout(
 st.plotly_chart(fig_unificado, use_container_width=True)
 
 
-# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x PVs Expedidos em Romaneios) ---
+# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x Expedições em Romaneios) ---
 st.subheader(
-    "🚚 Comparativo: Pedidos Produzidos (PV) vs. Pedidos Expedidos (Romaneios)"
+    "🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições (Romaneios)"
 )
 
 fig_comp = go.Figure()
@@ -317,7 +311,7 @@ fig_comp.add_trace(
     go.Bar(
         x=df_diario["Data"],
         y=df_diario["Total_Expedidos"],
-        name="Pedidos Expedidos (Romaneios)",
+        name="Expedições (Romaneios)",
         marker_color="#e76f51",
     )
 )
@@ -329,7 +323,7 @@ fig_comp.update_layout(
     paper_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     xaxis=dict(title="Data"),
-    yaxis=dict(title="Quantidade de Pedidos (PV)"),
+    yaxis=dict(title="Quantidade"),
     margin=dict(l=40, r=40, t=40, b=40),
 )
 
