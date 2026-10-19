@@ -86,7 +86,7 @@ with col_logo2:
 
 st.divider()
 
-# --- UPLOAD DE ARQUIVOS (INTERFACE CLEAN) ---
+# --- UPLOAD DE ARQUIVOS ---
 st.sidebar.header("📁 Upload de Arquivos")
 uploaded_prod = st.sidebar.file_uploader(
     "Planilha de Produção (.xlsx)", type=["xlsx"]
@@ -108,7 +108,6 @@ def load_data(file_p, file_r):
       df_prod_bruto = pd.read_excel(file_p_path, sheet_name="DadosBrutos")
       df_prod_tratado = pd.read_excel(file_p_path, sheet_name="LimpezaDados")
 
-      # Leitura da aba de Faturamento (DadosFaturamento)
       excel_p = pd.ExcelFile(file_p_path)
       if "DadosFaturamento" in excel_p.sheet_names:
         df_fat = pd.read_excel(file_p_path, sheet_name="DadosFaturamento")
@@ -139,12 +138,10 @@ if df_prod_tratado is None or df_rom_tratado is None:
   st.stop()
 
 # --- CONSOLIDAÇÃO DOS DADOS DIÁRIOS ---
-# 1. Produção (Quantidade de PVs)
 df_p = df_prod_tratado.copy()
 df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
 df_p.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
 
-# 2. SKUs e Status (Dados Brutos)
 if df_prod_bruto is not None:
   df_pb = df_prod_bruto.copy()
   df_pb["DATA"] = pd.to_datetime(df_pb["DATA"], errors="coerce")
@@ -175,18 +172,14 @@ else:
   df_diario["SAUDAVEL"] = 0
   df_diario["BACKLOG"] = 0
 
-# 3. Processamento do Faturamento (da aba DadosFaturamento)
 if df_fat is not None:
   df_f = df_fat.copy()
   df_f["DATA"] = pd.to_datetime(df_f["DATA"], errors="coerce")
-
-  # Detecta o nome da coluna de Faturamento
   col_fat_nome = (
       "Vlr Faturado"
       if "Vlr Faturado" in df_f.columns
       else ("Faturamento" if "Faturamento" in df_f.columns else df_f.columns[1])
   )
-
   df_f.rename(columns={col_fat_nome: "Valor_Faturado"}, inplace=True)
   df_diario = pd.merge(
       df_diario, df_f[["DATA", "Valor_Faturado"]], on="DATA", how="left"
@@ -194,7 +187,6 @@ if df_fat is not None:
 else:
   df_diario["Valor_Faturado"] = 0.0
 
-# 4. Expedição (Romaneios)
 df_r = df_rom_tratado.copy()
 df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
 df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
@@ -204,6 +196,33 @@ df_diario = pd.merge(
 ).fillna(0)
 df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 df_diario["Data_Str"] = df_diario["DATA"].dt.strftime("%Y-%m-%d")
+
+# Estilo padronizado de layout de alto contraste
+layout_contraste = dict(
+    template="plotly_dark",
+    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#ffffff", size=13),
+    xaxis=dict(
+        title=dict(font=dict(size=14, color="#ffffff")),
+        tickfont=dict(color="#e0e0e0", size=12, family="Arial Black"),
+        type="category",
+    ),
+    yaxis=dict(
+        title=dict(font=dict(size=14, color="#ffffff")),
+        tickfont=dict(color="#e0e0e0", size=12, family="Arial Black"),
+        gridcolor="#2a3a5e",
+    ),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.05,
+        xanchor="right",
+        x=1,
+        font=dict(size=12, color="#ffffff"),
+    ),
+    margin=dict(l=40, r=40, t=50, b=40),
+)
 
 # --- KPIs PRINCIPAIS ---
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -267,14 +286,20 @@ fig_fat.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Pedidos de Venda (PV)",
-        marker_color="#00b4d8",
-        text=df_diario["Total_PVs"].astype(int),
+        marker=dict(
+            color="#0077b6", line=dict(color="#ffffff", width=1)
+        ),  # Azul escuro com borda branca
+        text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
+        textfont=dict(color="#ffffff", size=13, family="Arial"),
         textposition="auto",
         yaxis="y1",
     )
 )
 
-fat_labels = [f"R$ {v:,.0f}".replace(",", ".") for v in df_diario["Valor_Faturado"]]
+fat_labels = [
+    f"<b>R$ {v:,.0f}</b>".replace(",", ".")
+    for v in df_diario["Valor_Faturado"]
+]
 
 fig_fat.add_trace(
     go.Scatter(
@@ -283,33 +308,33 @@ fig_fat.add_trace(
         name="Valor Faturado (R$)",
         mode="lines+markers+text",
         text=fat_labels,
+        textfont=dict(color="#2ec4b6", size=13, family="Arial"),
         textposition="top center",
-        marker_color="#52b788",
-        line=dict(width=3),
+        marker=dict(color="#2ec4b6", size=9),
+        line=dict(color="#2ec4b6", width=4),
         yaxis="y2",
     )
 )
 
+fig_fat.update_layout(**layout_contraste)
 fig_fat.update_layout(
-    template="plotly_dark",
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-    xaxis=dict(title="Data", type="category"),
     yaxis=dict(
         title=dict(
-            text="<b>Qtd de Pedidos (PV)</b>", font=dict(color="#00b4d8")
-        )
+            text="<b>Qtd de Pedidos (PV)</b>",
+            font=dict(color="#00b4d8", size=14),
+        ),
+        tickfont=dict(color="#ffffff", size=12),
     ),
     yaxis2=dict(
         title=dict(
-            text="<b>Valor Faturado (R$)</b>", font=dict(color="#52b788")
+            text="<b>Valor Faturado (R$)</b>",
+            font=dict(color="#2ec4b6", size=14),
         ),
+        tickfont=dict(color="#ffffff", size=12),
         overlaying="y",
         side="right",
         showgrid=False,
     ),
-    margin=dict(l=40, r=40, t=50, b=40),
 )
 
 st.plotly_chart(fig_fat, use_container_width=True)
@@ -323,8 +348,9 @@ fig_unificado.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Pedidos de Venda (PV)",
-        marker_color="#48cae4",
-        text=df_diario["Total_PVs"].astype(int),
+        marker=dict(color="#0077b6", line=dict(color="#ffffff", width=1)),
+        text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
+        textfont=dict(color="#ffffff", size=13),
         textposition="auto",
         yaxis="y1",
     )
@@ -335,31 +361,32 @@ fig_unificado.add_trace(
         y=df_diario["Total_SKUs"],
         name="Total de SKUs",
         mode="lines+markers+text",
-        text=df_diario["Total_SKUs"].astype(int),
+        text=[f"<b>{int(v)}</b>" for v in df_diario["Total_SKUs"]],
+        textfont=dict(color="#ff9f1c", size=13),
         textposition="top center",
-        marker_color="#f77f00",
-        line=dict(width=3),
+        marker=dict(color="#ff9f1c", size=9),
+        line=dict(color="#ff9f1c", width=4),
         yaxis="y2",
     )
 )
+fig_unificado.update_layout(**layout_contraste)
 fig_unificado.update_layout(
-    template="plotly_dark",
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-    xaxis=dict(title="Data", type="category"),
     yaxis=dict(
         title=dict(
-            text="<b>Qtd de Pedidos (PV)</b>", font=dict(color="#48cae4")
-        )
+            text="<b>Qtd de Pedidos (PV)</b>",
+            font=dict(color="#00b4d8", size=14),
+        ),
+        tickfont=dict(color="#ffffff", size=12),
     ),
     yaxis2=dict(
-        title=dict(text="<b>Total de SKUs</b>", font=dict(color="#f77f00")),
+        title=dict(
+            text="<b>Total de SKUs</b>", font=dict(color="#ff9f1c", size=14)
+        ),
+        tickfont=dict(color="#ffffff", size=12),
         overlaying="y",
         side="right",
         showgrid=False,
     ),
-    margin=dict(l=40, r=40, t=50, b=40),
 )
 st.plotly_chart(fig_unificado, use_container_width=True)
 
@@ -372,8 +399,9 @@ fig_status_isolado.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["SAUDAVEL"],
         name="Notas Saudáveis",
-        marker_color="#2a9d8f",
-        text=df_diario["SAUDAVEL"].astype(int),
+        marker=dict(color="#0f9f90", line=dict(color="#ffffff", width=1)),
+        text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["SAUDAVEL"]],
+        textfont=dict(color="#ffffff", size=13),
         textposition="auto",
     )
 )
@@ -382,20 +410,15 @@ fig_status_isolado.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["BACKLOG"],
         name="Backlog",
-        marker_color="#e76f51",
-        text=df_diario["BACKLOG"].astype(int),
+        marker=dict(color="#d9381e", line=dict(color="#ffffff", width=1)),
+        text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["BACKLOG"]],
+        textfont=dict(color="#ffffff", size=13),
         textposition="auto",
     )
 )
+fig_status_isolado.update_layout(**layout_contraste)
 fig_status_isolado.update_layout(
-    barmode="stack",
-    template="plotly_dark",
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-    xaxis=dict(title="Data de Produção", type="category"),
-    yaxis=dict(title="Quantidade de Pedidos (PV)"),
-    margin=dict(l=40, r=40, t=50, b=40),
+    barmode="stack", yaxis=dict(title="<b>Quantidade de Pedidos (PV)</b>")
 )
 st.plotly_chart(fig_status_isolado, use_container_width=True)
 
@@ -408,8 +431,9 @@ fig_comp.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Produzidos no Dia",
-        marker_color="#2a9d8f",
-        text=df_diario["Total_PVs"].astype(int),
+        marker=dict(color="#0f9f90", line=dict(color="#ffffff", width=1)),
+        text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
+        textfont=dict(color="#ffffff", size=13),
         textposition="auto",
     )
 )
@@ -418,20 +442,15 @@ fig_comp.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_Expedidos"],
         name="Expedidos no Dia (Romaneio)",
-        marker_color="#e76f51",
-        text=df_diario["Total_Expedidos"].astype(int),
+        marker=dict(color="#d9381e", line=dict(color="#ffffff", width=1)),
+        text=[f"<b>{int(v)}</b>" for v in df_diario["Total_Expedidos"]],
+        textfont=dict(color="#ffffff", size=13),
         textposition="auto",
     )
 )
+fig_comp.update_layout(**layout_contraste)
 fig_comp.update_layout(
-    barmode="group",
-    template="plotly_dark",
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-    xaxis=dict(title="Data", type="category"),
-    yaxis=dict(title="Quantidade"),
-    margin=dict(l=40, r=40, t=50, b=40),
+    barmode="group", yaxis=dict(title="<b>Quantidade</b>")
 )
 st.plotly_chart(fig_comp, use_container_width=True)
 
