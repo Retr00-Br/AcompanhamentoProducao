@@ -1,7 +1,10 @@
 import os
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 
 # Configuração da página
 st.set_page_config(
@@ -68,7 +71,7 @@ with col_titulo:
   st.title("Dashboard de Produção - Operação Rambo")
   st.markdown(
       "Controle diário baseado em **Pedidos de Venda (PV)**, **SKUs** e"
-      " **Expedição (Romaneios)**."
+      " **Expedição (Romaneios)** com Modelos Preditivos de ML."
   )
 
 with col_logo2:
@@ -96,157 +99,143 @@ uploaded_rom = st.sidebar.file_uploader(
 
 @st.cache_data
 def load_data(file_p, file_r):
-  df_prod, df_rom = None, None
+  df_prod_bruto, df_prod_tratado = None, None
+  df_rom_bruto, df_rom_tratado = None, None
 
-  if file_p is not None:
-    df_prod = pd.read_excel(file_p, sheet_name="SEPARAÇÃO")
-  elif os.path.exists("Operação Rambo (1) (1).xlsx"):
-    df_prod = pd.read_excel(
-        "Operação Rambo (1) (1).xlsx", sheet_name="SEPARAÇÃO"
-    )
+  # 1. Leitura Produção
+  file_p_path = file_p if file_p is not None else "DadosProducao.xlsx"
+  if os.path.exists(file_p_path) or file_p is not None:
+    try:
+      df_prod_bruto = pd.read_excel(file_p_path, sheet_name="DadosBrutos")
+      df_prod_tratado = pd.read_excel(file_p_path, sheet_name="LimpezaDados")
+    except Exception as e:
+      st.error(f"Erro ao carregar dados de produção: {e}")
 
-  if file_r is not None:
-    df_rom = pd.read_excel(file_r, header=0)
-  elif os.path.exists("DadosRomaneios.xlsx"):
-    df_rom = pd.read_excel("DadosRomaneios.xlsx", header=0)
+  # 2. Leitura Romaneios
+  file_r_path = file_r if file_r is not None else "DadosRomaneios.xlsx"
+  if os.path.exists(file_r_path) or file_r is not None:
+    try:
+      df_rom_bruto = pd.read_excel(file_r_path, sheet_name="Romaneios")
+      df_rom_tratado = pd.read_excel(file_r_path, sheet_name="Planilha1")
+    except Exception as e:
+      st.error(f"Erro ao carregar dados de romaneios: {e}")
 
-  return df_prod, df_rom
+  return df_prod_bruto, df_prod_tratado, df_rom_bruto, df_rom_tratado
 
 
-df, df_rom = load_data(uploaded_prod, uploaded_rom)
+df_prod_bruto, df_prod_tratado, df_rom_bruto, df_rom_tratado = load_data(
+    uploaded_prod, uploaded_rom
+)
 
-if df is None:
+if df_prod_bruto is None and df_prod_tratado is None:
   st.warning(
-      "Por favor, faça o upload da planilha de produção na barra lateral para"
-      " iniciar."
+      "Por favor, faça o upload das planilhas na barra lateral para iniciar."
   )
   st.stop()
 
-# --- BARRA LATERAL (FILTROS) ---
-st.sidebar.header("⚙️ Filtros e Parâmetros")
-
-colunas_disponiveis = df.columns.tolist()
-
-col_data = st.sidebar.selectbox(
-    "Coluna de Data",
-    colunas_disponiveis,
-    index=(
-        colunas_disponiveis.index("DATA")
-        if "DATA" in colunas_disponiveis
-        else 0
-    ),
-)
-col_pv = (
-    "PV"
-    if "PV" in colunas_disponiveis
-    else st.sidebar.selectbox("Coluna de Pedido de Venda (PV)", colunas_disponiveis)
-)
-col_sku = st.sidebar.selectbox(
-    "Coluna de SKUs",
-    colunas_disponiveis,
-    index=(
-        colunas_disponiveis.index("SKU'S")
-        if "SKU'S" in colunas_disponiveis
-        else min(4, len(colunas_disponiveis) - 1)
-    ),
+# --- OPÇÃO DE SELEÇÃO DE FONTE DE DADOS ---
+st.sidebar.header("⚙️ Fonte de Dados e Filtros")
+fonte_dados = st.sidebar.radio(
+    "Usar Dados de:",
+    ("Página 2 (Tratados / Consolidados)", "Página 1 (Dados Brutos)"),
 )
 
-# Tratamento da data de produção
-df[col_data] = pd.to_datetime(df[col_data], errors="coerce")
-df = df.dropna(subset=[col_data])
-df = df[df[col_data] >= "2026-01-01"]
-df["Ano_Semana"] = df[col_data].dt.strftime("%Y - Semana %V")
+# --- CONSOLIDAÇÃO DOS DADOS DIÁRIOS ---
+if fonte_dados == "Página 2 (Tratados / Consolidados)":
+  # Produção Tratada
+  df_p = df_prod_tratado.copy()
+  df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
+  df_p.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
 
-# Filtro de Semanas
-semanas_disponiveis = sorted(df["Ano_Semana"].unique(), reverse=True)
-semanas_selecionadas = st.sidebar.multiselect(
-    "Filtrar por Semana(s)",
-    options=semanas_disponiveis,
-    default=semanas_disponiveis,
-)
-
-# Filtro de Separadores
-separadores_disponiveis = (
-    sorted(df["SEPARADOR"].dropna().astype(str).unique())
-    if "SEPARADOR" in df.columns
-    else []
-)
-separadores_selecionados = st.sidebar.multiselect(
-    "Filtrar por Separador(es)",
-    options=separadores_disponiveis,
-    default=separadores_disponiveis,
-)
-
-# Aplicando Filtros
-df_filtrado = df.copy()
-if semanas_selecionadas:
-  df_filtrado = df_filtrado[df_filtrado["Ano_Semana"].isin(semanas_selecionadas)]
-if separadores_selecionados and "SEPARADOR" in df.columns:
-  df_filtrado = df_filtrado[
-      df_filtrado["SEPARADOR"].astype(str).isin(separadores_selecionados)
-  ]
-
-# --- PROCESSAMENTO DIÁRIO DE PRODUÇÃO (PVs e SKUs) ---
-df_diario = (
-    df_filtrado.groupby(df_filtrado[col_data].dt.date)
-    .agg(
-        Total_PVs=(col_pv, "count"),
-        Total_SKUs=(col_sku, "sum"),
+  # SKUs calculados a partir dos dados brutos para manter o cálculo de SKUs
+  if df_prod_bruto is not None:
+    df_sku_agg = (
+        df_prod_bruto.groupby(pd.to_datetime(df_prod_bruto["DATA"]).dt.date)[
+            "SKU'S"
+        ]
+        .sum()
+        .reset_index(name="Total_SKUs")
     )
-    .reset_index()
-)
-df_diario.rename(columns={col_data: "Data"}, inplace=True)
+    df_sku_agg["DATA"] = pd.to_datetime(df_sku_agg["DATA"])
+    df_diario = pd.merge(df_p, df_sku_agg, on="DATA", how="left").fillna(0)
+  else:
+    df_diario = df_p
+    df_diario["Total_SKUs"] = 0
 
-# --- PROCESSAMENTO DOS ROMANEIOS (CONTAGEM DE REPETIÇÃO DE DIAS / LINHAS) ---
-if df_rom is not None and not df_rom.empty:
-  col_dt_rom = (
-      "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
-  )
+  # Romaneios Tratados
+  if df_rom_tratado is not None:
+    df_r = df_rom_tratado.copy()
+    df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
+    df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
+    df_diario = pd.merge(
+        df_diario,
+        df_r[["DATA", "Total_Expedidos"]],
+        on="DATA",
+        how="outer",
+    ).fillna(0)
 
-  df_rom["DATA_ROM"] = pd.to_datetime(df_rom[col_dt_rom], errors="coerce")
-  df_rom = df_rom.dropna(subset=["DATA_ROM"])
-  df_rom = df_rom[df_rom["DATA_ROM"] >= "2026-01-01"]
-
-  # Contagem exata de quantas vezes cada dia se repete na planilha de romaneios
-  df_rom_diario = (
-      df_rom.groupby(df_rom["DATA_ROM"].dt.date)
-      .size()
-      .reset_index(name="Total_Expedidos")
-  )
-  df_rom_diario.rename(columns={"DATA_ROM": "Data"}, inplace=True)
-
-  df_diario = pd.merge(df_diario, df_rom_diario, on="Data", how="left").fillna(
-      0
-  )
-  df_diario = df_diario.sort_values("Data").reset_index(drop=True)
 else:
-  df_diario["Total_Expedidos"] = 0
+  # Dados Brutos (Página 1)
+  df_p = df_prod_bruto.copy()
+  df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
 
-df_diario["Data_Str"] = pd.to_datetime(df_diario["Data"]).dt.strftime(
-    "%Y-%m-%d"
-)
+  df_diario = (
+      df_p.groupby(df_p["DATA"].dt.date)
+      .agg(Total_PVs=("PV", "count"), Total_SKUs=("SKU'S", "sum"))
+      .reset_index()
+  )
+  df_diario["DATA"] = pd.to_datetime(df_diario["DATA"])
 
-# --- KPIs PRINCIPAIS ---
-kpi1, kpi2, kpi3 = st.columns(3)
+  if df_rom_bruto is not None:
+    df_r = df_rom_bruto.copy()
+    df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
+    df_rom_agg = (
+        df_r.groupby(df_r["DATA"].dt.date)
+        .size()
+        .reset_index(name="Total_Expedidos")
+    )
+    df_rom_agg["DATA"] = pd.to_datetime(df_rom_agg["DATA"])
+    df_diario = pd.merge(df_diario, df_rom_agg, on="DATA", how="left").fillna(0)
+
+df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
+df_diario["Data_Str"] = df_diario["DATA"].dt.strftime("%Y-%m-%d")
+
+# --- KPIs PRINCIPAIS E MÉDIAS ---
+kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+
+media_pvs = df_diario["Total_PVs"].mean()
+media_skus = df_diario["Total_SKUs"].mean()
+media_exp = df_diario["Total_Expedidos"].mean()
+
 with kpi1:
   st.metric(
-      label="📄 Total de PVs Produzidos",
+      label="📄 Total PVs Produzidos",
       value=int(df_diario["Total_PVs"].sum()),
+      delta=f"Média: {media_pvs:.1f}/dia",
   )
 with kpi2:
   st.metric(
-      label="📦 Total de SKUs Produzidos",
+      label="📦 Total SKUs Produzidos",
       value=int(df_diario["Total_SKUs"].sum()),
+      delta=f"Média: {media_skus:.1f}/dia",
   )
 with kpi3:
   st.metric(
-      label="🚚 Total de Expedições (Romaneios)",
+      label="🚚 Total Expedições",
       value=int(df_diario["Total_Expedidos"].sum()),
+      delta=f"Média: {media_exp:.1f}/dia",
+  )
+with kpi4:
+  st.metric(label="📊 Média SKUs/PV", value=f"{media_skus / media_pvs:.2f}" if media_pvs > 0 else "0")
+with kpi5:
+  st.metric(
+      label="⚡ Eficiência Expedição",
+      value=f"{(media_exp / media_pvs * 100):.1f}%" if media_pvs > 0 else "0%",
   )
 
 st.markdown("")
 
-# --- GRÁFICO 1: UNIFICADO (PVs Produzidos x SKUs - Eixo Duplo) ---
+# --- GRÁFICO 1: UNIFICADO (PVs x SKUs) ---
 st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs")
 
 fig_unificado = go.Figure()
@@ -296,13 +285,10 @@ fig_unificado.update_layout(
 
 st.plotly_chart(fig_unificado, use_container_width=True)
 
-# --- GRÁFICO 2: COMPARATIVO (PVs Produzidos x Expedições por repetição de dias) ---
-st.subheader(
-    "🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições (Romaneios)"
-)
+# --- GRÁFICO 2: COMPARATIVO PRODUÇÃO X EXPEDIÇÃO ---
+st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
 
 fig_comp = go.Figure()
-
 fig_comp.add_trace(
     go.Bar(
         x=df_diario["Data_Str"],
@@ -311,7 +297,6 @@ fig_comp.add_trace(
         marker_color="#2a9d8f",
     )
 )
-
 fig_comp.add_trace(
     go.Bar(
         x=df_diario["Data_Str"],
@@ -320,7 +305,6 @@ fig_comp.add_trace(
         marker_color="#e76f51",
     )
 )
-
 fig_comp.update_layout(
     barmode="group",
     template="plotly_dark",
@@ -331,12 +315,44 @@ fig_comp.update_layout(
     yaxis=dict(title="Quantidade"),
     margin=dict(l=40, r=40, t=40, b=40),
 )
-
 st.plotly_chart(fig_comp, use_container_width=True)
 
+# --- MÓDULO DE MACHINE LEARNING ---
+st.divider()
+st.subheader("🤖 Modelo de Machine Learning: Previsão de Expedição e Demanda de SKUs")
+
+col_ml1, col_ml2 = st.columns(2)
+
+with col_ml1:
+  st.markdown("### 📈 Simulação de Capacidade de Expedição")
+  input_pvs = st.slider("Selecione a meta de PVs produzidos no dia:", 10, 200, 80)
+  input_skus = st.slider("Selecione a estimativa de SKUs movimentados:", 50, 500, 300)
+
+  # Treinando o Modelo Random Forest Regressor
+  X = df_diario[["Total_PVs", "Total_SKUs"]]
+  y = df_diario["Total_Expedidos"]
+
+  if len(df_diario) >= 3:
+    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf_model.fit(X, y)
+
+    pred_expedicao = rf_model.predict([[input_pvs, input_skus]])[0]
+
+    st.success(f"**Previsão de Expedição Estimada:** {int(pred_expedicao)} volumes / romaneios.")
+    st.caption("Modelo treinado via Random Forest Regressor com os dados das planilhas.")
+  else:
+    st.info("Insira mais dados para habilitar o treinamento do modelo.")
+
+with col_ml2:
+  st.markdown("### 📊 Médias Históricas do Período")
+  st.write(f"- **Média Diária de PVs:** `{media_pvs:.2f}`")
+  st.write(f"- **Média Diária de SKUs:** `{media_skus:.2f}`")
+  st.write(f"- **Média Diária de Expedições:** `{media_exp:.2f}`")
+  st.write(f"- **Proporção Média de SKUs por PV:** `{media_skus/media_pvs:.2f}`")
+
 # --- TABELA DETALHADA ---
-with st.expander("🔍 Visualizar Dados Tabulares Consolidados"):
+with st.expander("🔍 Visualizar Tabela Consolidada"):
   st.dataframe(
-      df_diario[["Data", "Total_PVs", "Total_SKUs", "Total_Expedidos"]],
+      df_diario[["DATA", "Total_PVs", "Total_SKUs", "Total_Expedidos"]],
       use_container_width=True,
   )
