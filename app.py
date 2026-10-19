@@ -14,24 +14,18 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Estilo Geral e Fundo do Dashboard */
     .main {
         background-color: #f8f9fa;
         color: #000000 !important;
     }
-    
-    /* Cores de Títulos, Subtítulos, Parágrafos e Rótulos em PRETO */
     h1, h2, h3, h4, h5, h6 {
         color: #000000 !important;
         font-weight: 800 !important;
     }
-    
     p, span, label, div, .stMarkdown {
         color: #000000 !important;
         font-weight: 600;
     }
-
-    /* Sidebar */
     [data-testid="stSidebar"] {
         background-color: #e9ecef;
         color: #000000 !important;
@@ -39,8 +33,6 @@ st.markdown(
     [data-testid="stSidebar"] * {
         color: #000000 !important;
     }
-
-    /* Cards de Métricas (KPIs) com textos em Preto */
     [data-testid="stMetric"] {
         background-color: #ffffff;
         padding: 15px;
@@ -57,13 +49,10 @@ st.markdown(
         color: #000000 !important;
         font-weight: 800 !important;
     }
-
-    /* Expander e Tabelas */
     .streamlit-expanderHeader {
         color: #000000 !important;
         font-weight: 700 !important;
     }
-
     .logo-container {
         background-color: #ffffff;
         padding: 8px;
@@ -332,7 +321,6 @@ fig_fat.add_trace(
         text=fat_labels,
         textfont=dict(color="#000000", size=13),
         textposition="top center",
-        textangle=0,
         marker=dict(color="#2ec4b6", size=9),
         line=dict(color="#2ec4b6", width=4),
         yaxis="y2",
@@ -389,7 +377,6 @@ fig_unificado.add_trace(
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_SKUs"]],
         textfont=dict(color="#000000", size=13),
         textposition="top center",
-        textangle=0,
         marker=dict(color="#d97706", size=9),
         line=dict(color="#d97706", width=4),
         yaxis="y2",
@@ -428,7 +415,7 @@ fig_status_isolado.add_trace(
         marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["SAUDAVEL"]],
         textfont=dict(color="#ffffff", size=13),
-        textangle=0,  # Força o número a ficar reto
+        textangle=0,
         textposition="auto",
         cliponaxis=False,
     )
@@ -441,7 +428,7 @@ fig_status_isolado.add_trace(
         marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["BACKLOG"]],
         textfont=dict(color="#ffffff", size=13),
-        textangle=0,  # Força o número a ficar reto
+        textangle=0,
         textposition="auto",
         cliponaxis=False,
     )
@@ -464,7 +451,7 @@ fig_comp.add_trace(
         marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
         textfont=dict(color="#ffffff", size=13),
-        textangle=0,  # Força o número a ficar reto
+        textangle=0,
         textposition="auto",
         cliponaxis=False,
     )
@@ -477,7 +464,7 @@ fig_comp.add_trace(
         marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_Expedidos"]],
         textfont=dict(color="#ffffff", size=13),
-        textangle=0,  # Força o número a ficar reto
+        textangle=0,
         textposition="auto",
         cliponaxis=False,
     )
