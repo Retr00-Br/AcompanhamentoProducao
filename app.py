@@ -105,7 +105,7 @@ uploaded_rom = st.sidebar.file_uploader(
     "Planilha de Romaneios (.xlsx)", type=["xlsx"]
 )
 uploaded_fat = st.sidebar.file_uploader(
-    "Planilha de Faturamento Detalhado (.xlsx)", type=["xlsx"]
+    "Planilha de Faturamento (.xlsx)", type=["xlsx"]
 )
 
 
@@ -113,7 +113,7 @@ uploaded_fat = st.sidebar.file_uploader(
 def load_data(file_p, file_r, file_f):
   df_prod_bruto, df_prod_tratado = None, None
   df_rom_bruto, df_rom_tratado = None, None
-  df_fat, df_fat_detalhado = None, None
+  df_fat_detalhado = None
 
   # 1. Produção
   file_p_path = file_p if file_p is not None else "DadosProducao.xlsx"
@@ -121,10 +121,6 @@ def load_data(file_p, file_r, file_f):
     try:
       df_prod_bruto = pd.read_excel(file_p_path, sheet_name="DadosBrutos")
       df_prod_tratado = pd.read_excel(file_p_path, sheet_name="LimpezaDados")
-
-      excel_p = pd.ExcelFile(file_p_path)
-      if "DadosFaturamento" in excel_p.sheet_names:
-        df_fat = pd.read_excel(file_p_path, sheet_name="DadosFaturamento")
     except Exception as e:
       st.error(f"Erro ao carregar Produção: {e}")
 
@@ -137,26 +133,19 @@ def load_data(file_p, file_r, file_f):
     except Exception as e:
       st.error(f"Erro ao carregar Romaneios: {e}")
 
-  # 3. Faturamento Detalhado por Cliente
+  # 3. Faturamento (Totalmente independente)
   if file_f is not None:
     try:
       df_fat_detalhado = pd.read_excel(file_f)
     except Exception as e:
-      st.error(f"Erro ao carregar arquivo de Faturamento: {e}")
+      st.error(f"Erro ao carregar Faturamento: {e}")
   elif os.path.exists("DadosFaturamento.xlsx"):
     try:
       df_fat_detalhado = pd.read_excel("DadosFaturamento.xlsx")
     except Exception as e:
       st.error(f"Erro ao carregar DadosFaturamento.xlsx local: {e}")
 
-  return (
-      df_prod_bruto,
-      df_prod_tratado,
-      df_rom_bruto,
-      df_rom_tratado,
-      df_fat,
-      df_fat_detalhado,
-  )
+  return df_prod_bruto, df_prod_tratado, df_rom_bruto, df_rom_tratado, df_fat_detalhado
 
 
 (
@@ -164,7 +153,6 @@ def load_data(file_p, file_r, file_f):
     df_prod_tratado,
     df_rom_bruto,
     df_rom_tratado,
-    df_fat,
     df_fat_detalhado,
 ) = load_data(uploaded_prod, uploaded_rom, uploaded_fat)
 
@@ -172,7 +160,8 @@ if df_prod_tratado is None or df_rom_tratado is None:
   st.warning("Por favor, faça o upload das planilhas na barra lateral para iniciar.")
   st.stop()
 
-# --- CONSOLIDAÇÃO DOS DADOS DIÁRIOS ---
+# --- TRATAMENTO E CONSOLIDAÇÃO INDEPENDENTE DE DADOS ---
+# Produção
 df_p = df_prod_tratado.copy()
 df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
 df_p.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
@@ -187,7 +176,6 @@ if df_prod_bruto is not None:
       .unstack(fill_value=0)
       .reset_index()
   )
-
   if "SAUDAVEL" not in df_status_agg.columns:
     df_status_agg["SAUDAVEL"] = 0
   if "BACKLOG" not in df_status_agg.columns:
@@ -196,7 +184,6 @@ if df_prod_bruto is not None:
   df_sku_agg = (
       df_pb.groupby("DATA")["SKU'S"].sum().reset_index(name="Total_SKUs")
   )
-
   df_prod_completo = pd.merge(
       df_sku_agg, df_status_agg, on="DATA", how="outer"
   ).fillna(0)
@@ -207,21 +194,7 @@ else:
   df_diario["SAUDAVEL"] = 0
   df_diario["BACKLOG"] = 0
 
-if df_fat is not None:
-  df_f = df_fat.copy()
-  df_f["DATA"] = pd.to_datetime(df_f["DATA"], errors="coerce")
-  col_fat_nome = (
-      "Vlr Faturado"
-      if "Vlr Faturado" in df_f.columns
-      else ("Faturamento" if "Faturamento" in df_f.columns else df_f.columns[1])
-  )
-  df_f.rename(columns={col_fat_nome: "Valor_Faturado"}, inplace=True)
-  df_diario = pd.merge(
-      df_diario, df_f[["DATA", "Valor_Faturado"]], on="DATA", how="left"
-  ).fillna(0)
-else:
-  df_diario["Valor_Faturado"] = 0.0
-
+# Romaneios
 df_r = df_rom_tratado.copy()
 df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
 df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
@@ -229,10 +202,44 @@ df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
 df_diario = pd.merge(
     df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
 ).fillna(0)
+
+# Faturamento Calculado EXCLUSIVAMENTE da Planilha de Faturamento
+if df_fat_detalhado is not None:
+  df_fd_calc = df_fat_detalhado.copy()
+  col_emissao_calc = (
+      "Emissão"
+      if "Emissão" in df_fd_calc.columns
+      else ("DATA" if "DATA" in df_fd_calc.columns else df_fd_calc.columns[1])
+  )
+  col_valor_calc = (
+      "Valor"
+      if "Valor" in df_fd_calc.columns
+      else (
+          "Vlr Faturado"
+          if "Vlr Faturado" in df_fd_calc.columns
+          else df_fd_calc.columns[-1]
+      )
+  )
+
+  df_fd_calc["DATA"] = pd.to_datetime(
+      df_fd_calc[col_emissao_calc], errors="coerce"
+  )
+  df_fat_diario_agg = (
+      df_fd_calc.groupby("DATA")[col_valor_calc]
+      .sum()
+      .reset_index(name="Valor_Faturado")
+  )
+
+  df_diario = pd.merge(df_diario, df_fat_diario_agg, on="DATA", how="outer").fillna(
+      0
+  )
+else:
+  df_diario["Valor_Faturado"] = 0.0
+
 df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 df_diario["Data_Str"] = df_diario["DATA"].dt.strftime("%Y-%m-%d")
 
-# Layout dos Gráficos
+# Layout Padrão dos Gráficos
 layout_graficos = dict(
     template="plotly_white",
     plot_bgcolor="rgba(0,0,0,0)",
@@ -267,7 +274,15 @@ total_pvs = int(df_diario["Total_PVs"].sum())
 total_saudavel = int(df_diario["SAUDAVEL"].sum())
 total_backlog = int(df_diario["BACKLOG"].sum())
 total_skus = int(df_diario["Total_SKUs"].sum())
-total_faturado = df_diario["Valor_Faturado"].sum()
+total_faturado = (
+    df_fat_detalhado[
+        "Valor"
+        if "Valor" in df_fat_detalhado.columns
+        else df_fat_detalhado.columns[-1]
+    ].sum()
+    if df_fat_detalhado is not None
+    else 0.0
+)
 
 with kpi1:
   st.metric(
@@ -304,7 +319,7 @@ with kpi4:
   )
 with kpi5:
   st.metric(
-      label="💰 Total Faturado",
+      label="💰 Total Faturado Real",
       value=f"R$ {total_faturado:,.2f}".replace(",", "X")
       .replace(".", ",")
       .replace("X", "."),
@@ -341,7 +356,7 @@ fig_fat.add_trace(
     go.Scatter(
         x=df_diario["Data_Str"],
         y=df_diario["Valor_Faturado"],
-        name="Valor Faturado (R$)",
+        name="Valor Faturado Real (R$)",
         mode="lines+markers+text",
         text=fat_labels,
         textfont=dict(color="#000000", size=13),
@@ -498,21 +513,14 @@ fig_comp.update_layout(**layout_graficos)
 fig_comp.update_layout(barmode="group", yaxis=dict(title="<b>Quantidade</b>"))
 st.plotly_chart(fig_comp, use_container_width=True)
 
-# --- RANKINGS DIÁRIOS DE CLIENTES ---
+# --- ANÁLISE INDEPENDENTE DE RANKINGS POR CLIENTE ---
 st.divider()
-st.subheader("🥇 Rankings Diários de Desempenho por Cliente")
-
-datas_disponiveis = df_diario["Data_Str"].tolist()
-data_selecionada = st.selectbox(
-    "📅 Selecione a Data para Filtro dos Rankings Diários:",
-    datas_disponiveis,
-    index=len(datas_disponiveis) - 1,
-)
+st.subheader("🥇 Rankings Diários por Cliente (Bases Separadas)")
 
 col_rank1, col_rank2 = st.columns(2)
 
 with col_rank1:
-  st.markdown("### 🏆 Top 5 Clientes: Pedidos de Venda (PVs)")
+  st.markdown("### 🏆 Top 5 Clientes: Pedidos de Venda (Base Produção)")
   if (
       df_prod_bruto is not None
       and "CLIENTE" in df_prod_bruto.columns
@@ -522,8 +530,18 @@ with col_rank1:
     df_pb_cliente["DATA_STR"] = pd.to_datetime(
         df_pb_cliente["DATA"], errors="coerce"
     ).dt.strftime("%Y-%m-%d")
+    datas_prod_disponiveis = sorted(
+        df_pb_cliente["DATA_STR"].dropna().unique()
+    )
 
-    df_top_dia = df_pb_cliente[df_pb_cliente["DATA_STR"] == data_selecionada]
+    data_prod_sel = st.selectbox(
+        "Data (Base Produção):",
+        datas_prod_disponiveis,
+        index=len(datas_prod_disponiveis) - 1,
+        key="sel_prod_pv",
+    )
+
+    df_top_dia = df_pb_cliente[df_pb_cliente["DATA_STR"] == data_prod_sel]
     df_ranking_pv = (
         df_top_dia.groupby("CLIENTE")["PV"]
         .nunique()
@@ -558,12 +576,9 @@ with col_rank1:
           margin=dict(l=140, r=40, t=30, b=40),
       )
       st.plotly_chart(fig_top_pv, use_container_width=True)
-    else:
-      st.info(f"Sem lançamentos de PVs para a data {data_selecionada}.")
 
 with col_rank2:
-  st.markdown("### 💰 Top 5 Clientes: Maior Faturamento (R$)")
-
+  st.markdown("### 💰 Top 5 Clientes: Faturamento (Base Faturamento)")
   if df_fat_detalhado is not None:
     df_fd = df_fat_detalhado.copy()
 
@@ -590,8 +605,16 @@ with col_rank2:
     df_fd["DATA_STR"] = pd.to_datetime(
         df_fd[col_emissao], errors="coerce"
     ).dt.strftime("%Y-%m-%d")
+    datas_fat_disponiveis = sorted(df_fd["DATA_STR"].dropna().unique())
 
-    df_top_fat_dia = df_fd[df_fd["DATA_STR"] == data_selecionada]
+    data_fat_sel = st.selectbox(
+        "Data (Base Faturamento):",
+        datas_fat_disponiveis,
+        index=len(datas_fat_disponiveis) - 1,
+        key="sel_fat_5",
+    )
+
+    df_top_fat_dia = df_fd[df_fd["DATA_STR"] == data_fat_sel]
     df_ranking_fat = (
         df_top_fat_dia.groupby(col_cli)[col_valor]
         .sum()
@@ -634,17 +657,10 @@ with col_rank2:
           margin=dict(l=140, r=40, t=30, b=40),
       )
       st.plotly_chart(fig_top_fat, use_container_width=True)
-    else:
-      st.info(f"Sem lançamentos de Faturamento para a data {data_selecionada}.")
-  else:
-    st.info("Carregue a planilha de Faturamento na barra lateral.")
 
-# --- NOVO GRÁFICO: TOP 10 FATURAMENTO POR CLIENTE (DIÁRIO / GERAL) ---
+# --- RANKING EXPANDIDO TOP 10 FATURAMENTO ---
 st.divider()
-st.subheader(
-    "💎 Ranking Top 10 Clientes por Faturamento Monetário (R$) - Visão"
-    " Expandida"
-)
+st.subheader("💎 Ranking Top 10 Clientes por Faturamento Monetário (R$)")
 
 if df_fat_detalhado is not None:
   df_fd10 = df_fat_detalhado.copy()
@@ -672,18 +688,27 @@ if df_fat_detalhado is not None:
   df_fd10["DATA_STR"] = pd.to_datetime(
       df_fd10[col_emissao], errors="coerce"
   ).dt.strftime("%Y-%m-%d")
+  datas_fat_disponiveis10 = sorted(df_fd10["DATA_STR"].dropna().unique())
 
-  modo_top10 = st.radio(
-      "Modo de Exibição do Top 10:",
-      ["Por Dia Selecionado", "Acumulado do Período Geral"],
-      horizontal=True,
-  )
+  col_mode, col_date_top10 = st.columns([2, 2])
+
+  with col_mode:
+    modo_top10 = st.radio(
+        "Modo de Exibição do Top 10:",
+        ["Por Dia Selecionado", "Acumulado do Período Geral"],
+        horizontal=True,
+    )
 
   if modo_top10 == "Por Dia Selecionado":
-    df_top10_filtrado = df_fd10[df_fd10["DATA_STR"] == data_selecionada]
-    titulo_top10 = (
-        f"Top 10 Clientes por Faturamento no Dia: {data_selecionada}"
-    )
+    with col_date_top10:
+      data_top10_sel = st.selectbox(
+          "Selecione a Data de Emissão (Faturamento):",
+          datas_fat_disponiveis10,
+          index=len(datas_fat_disponiveis10) - 1,
+          key="sel_fat_10",
+      )
+    df_top10_filtrado = df_fd10[df_fd10["DATA_STR"] == data_top10_sel]
+    titulo_top10 = f"Top 10 Clientes por Faturamento no Dia: {data_top10_sel}"
   else:
     df_top10_filtrado = df_fd10
     titulo_top10 = "Top 10 Clientes por Faturamento Acumulado no Período"
@@ -729,8 +754,6 @@ if df_fat_detalhado is not None:
         margin=dict(l=180, r=40, t=50, b=40),
     )
     st.plotly_chart(fig_top10, use_container_width=True)
-  else:
-    st.info("Nenhum dado encontrado para o filtro selecionado.")
 
 # --- MACHINE LEARNING ---
 st.divider()
