@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
 
 # Configuração da página
 st.set_page_config(
@@ -71,7 +70,7 @@ with col_titulo:
   st.title("Dashboard de Produção - Operação Rambo")
   st.markdown(
       "Controle diário baseado em **Pedidos de Venda (PV)**, **SKUs** e"
-      " **Expedição (Romaneios)** com Modelos Preditivos de ML."
+      " **Expedição (Romaneios)** com Modelos Preditivos."
   )
 
 with col_logo2:
@@ -87,8 +86,8 @@ with col_logo2:
 
 st.divider()
 
-# --- UPLOAD DINÂMICO DE ARQUIVOS ---
-st.sidebar.header("📁 Upload de Planilhas Atualizadas")
+# --- UPLOAD DINÂMICO DE ARQUIVOS (INTERFACE CLEAN) ---
+st.sidebar.header("📁 Upload de Planilhas")
 uploaded_prod = st.sidebar.file_uploader(
     "Envie a planilha de Produção (.xlsx)", type=["xlsx"]
 )
@@ -102,23 +101,21 @@ def load_data(file_p, file_r):
   df_prod_bruto, df_prod_tratado = None, None
   df_rom_bruto, df_rom_tratado = None, None
 
-  # 1. Leitura Produção
   file_p_path = file_p if file_p is not None else "DadosProducao.xlsx"
   if os.path.exists(file_p_path) or file_p is not None:
     try:
       df_prod_bruto = pd.read_excel(file_p_path, sheet_name="DadosBrutos")
       df_prod_tratado = pd.read_excel(file_p_path, sheet_name="LimpezaDados")
     except Exception as e:
-      st.error(f"Erro ao carregar dados de produção: {e}")
+      st.error(f"Erro ao carregar produção: {e}")
 
-  # 2. Leitura Romaneios
   file_r_path = file_r if file_r is not None else "DadosRomaneios.xlsx"
   if os.path.exists(file_r_path) or file_r is not None:
     try:
       df_rom_bruto = pd.read_excel(file_r_path, sheet_name="Romaneios")
       df_rom_tratado = pd.read_excel(file_r_path, sheet_name="Planilha1")
     except Exception as e:
-      st.error(f"Erro ao carregar dados de romaneios: {e}")
+      st.error(f"Erro ao carregar romaneios: {e}")
 
   return df_prod_bruto, df_prod_tratado, df_rom_bruto, df_rom_tratado
 
@@ -127,80 +124,50 @@ df_prod_bruto, df_prod_tratado, df_rom_bruto, df_rom_tratado = load_data(
     uploaded_prod, uploaded_rom
 )
 
-if df_prod_bruto is None and df_prod_tratado is None:
+if df_prod_tratado is None or df_rom_tratado is None:
   st.warning(
       "Por favor, faça o upload das planilhas na barra lateral para iniciar."
   )
   st.stop()
 
-# --- OPÇÃO DE SELEÇÃO DE FONTE DE DADOS ---
-st.sidebar.header("⚙️ Fonte de Dados e Filtros")
-fonte_dados = st.sidebar.radio(
-    "Usar Dados de:",
-    ("Página 2 (Tratados / Consolidados)", "Página 1 (Dados Brutos)"),
-)
+# --- CONSOLIDAÇÃO DOS DADOS DIÁRIOS (PÁGINA 2) ---
+# 1. Produção (Página 2 / Tratados)
+df_p = df_prod_tratado.copy()
+df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
+df_p.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
 
-# --- CONSOLIDAÇÃO DOS DADOS DIÁRIOS ---
-if fonte_dados == "Página 2 (Tratados / Consolidados)":
-  # Produção Tratada
-  df_p = df_prod_tratado.copy()
-  df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
-  df_p.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
-
-  # SKUs calculados a partir dos dados brutos para manter o cálculo de SKUs
-  if df_prod_bruto is not None:
-    df_sku_agg = (
-        df_prod_bruto.groupby(pd.to_datetime(df_prod_bruto["DATA"]).dt.date)[
-            "SKU'S"
-        ]
-        .sum()
-        .reset_index(name="Total_SKUs")
-    )
-    df_sku_agg["DATA"] = pd.to_datetime(df_sku_agg["DATA"])
-    df_diario = pd.merge(df_p, df_sku_agg, on="DATA", how="left").fillna(0)
-  else:
-    df_diario = df_p
-    df_diario["Total_SKUs"] = 0
-
-  # Romaneios Tratados
-  if df_rom_tratado is not None:
-    df_r = df_rom_tratado.copy()
-    df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
-    df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
-    df_diario = pd.merge(
-        df_diario,
-        df_r[["DATA", "Total_Expedidos"]],
-        on="DATA",
-        how="outer",
-    ).fillna(0)
-
-else:
-  # Dados Brutos (Página 1)
-  df_p = df_prod_bruto.copy()
-  df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
-
-  df_diario = (
-      df_p.groupby(df_p["DATA"].dt.date)
-      .agg(Total_PVs=("PV", "count"), Total_SKUs=("SKU'S", "sum"))
-      .reset_index()
+# 2. SKUs (Detalhados na Página 1 de Produção)
+if df_prod_bruto is not None:
+  df_sku_agg = (
+      df_prod_bruto.groupby(pd.to_datetime(df_prod_bruto["DATA"]).dt.date)[
+          "SKU'S"
+      ]
+      .sum()
+      .reset_index(name="Total_SKUs")
   )
-  df_diario["DATA"] = pd.to_datetime(df_diario["DATA"])
+  df_sku_agg["DATA"] = pd.to_datetime(df_sku_agg["DATA"])
+  df_diario = pd.merge(df_p, df_sku_agg, on="DATA", how="left").fillna(0)
+else:
+  df_diario = df_p
+  df_diario["Total_SKUs"] = 0
 
-  if df_rom_bruto is not None:
-    df_r = df_rom_bruto.copy()
-    df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
-    df_rom_agg = (
-        df_r.groupby(df_r["DATA"].dt.date)
-        .size()
-        .reset_index(name="Total_Expedidos")
-    )
-    df_rom_agg["DATA"] = pd.to_datetime(df_rom_agg["DATA"])
-    df_diario = pd.merge(df_diario, df_rom_agg, on="DATA", how="left").fillna(0)
+# 3. Expedição / Romaneios (Página 2 / Tratados)
+df_r = df_rom_tratado.copy()
+df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
+df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
+
+# Merge outer para garantir alinhamento perfeito de datas sem perdas
+df_diario = pd.merge(
+    df_diario,
+    df_r[["DATA", "Total_Expedidos"]],
+    on="DATA",
+    how="outer",
+).fillna(0)
 
 df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 df_diario["Data_Str"] = df_diario["DATA"].dt.strftime("%Y-%m-%d")
 
-# --- KPIs PRINCIPAIS E MÉDIAS ---
+# --- KPIs PRINCIPAIS ---
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
 media_pvs = df_diario["Total_PVs"].mean()
@@ -226,7 +193,10 @@ with kpi3:
       delta=f"Média: {media_exp:.1f}/dia",
   )
 with kpi4:
-  st.metric(label="📊 Média SKUs/PV", value=f"{media_skus / media_pvs:.2f}" if media_pvs > 0 else "0")
+  st.metric(
+      label="📊 Média SKUs/PV",
+      value=f"{media_skus / media_pvs:.2f}" if media_pvs > 0 else "0",
+  )
 with kpi5:
   st.metric(
       label="⚡ Eficiência Expedição",
@@ -239,7 +209,6 @@ st.markdown("")
 st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs")
 
 fig_unificado = go.Figure()
-
 fig_unificado.add_trace(
     go.Bar(
         x=df_diario["Data_Str"],
@@ -249,7 +218,6 @@ fig_unificado.add_trace(
         yaxis="y1",
     )
 )
-
 fig_unificado.add_trace(
     go.Scatter(
         x=df_diario["Data_Str"],
@@ -261,7 +229,6 @@ fig_unificado.add_trace(
         yaxis="y2",
     )
 )
-
 fig_unificado.update_layout(
     template="plotly_dark",
     plot_bgcolor="rgba(0,0,0,0)",
@@ -282,7 +249,6 @@ fig_unificado.update_layout(
     ),
     margin=dict(l=40, r=40, t=40, b=40),
 )
-
 st.plotly_chart(fig_unificado, use_container_width=True)
 
 # --- GRÁFICO 2: COMPARATIVO PRODUÇÃO X EXPEDIÇÃO ---
@@ -319,36 +285,38 @@ st.plotly_chart(fig_comp, use_container_width=True)
 
 # --- MÓDULO DE MACHINE LEARNING ---
 st.divider()
-st.subheader("🤖 Modelo de Machine Learning: Previsão de Expedição e Demanda de SKUs")
+st.subheader("🤖 Previsão de Machine Learning")
 
 col_ml1, col_ml2 = st.columns(2)
 
 with col_ml1:
   st.markdown("### 📈 Simulação de Capacidade de Expedição")
   input_pvs = st.slider("Selecione a meta de PVs produzidos no dia:", 10, 200, 80)
-  input_skus = st.slider("Selecione a estimativa de SKUs movimentados:", 50, 500, 300)
+  input_skus = st.slider(
+      "Selecione a estimativa de SKUs movimentados:", 50, 500, 300
+  )
 
-  # Treinando o Modelo Random Forest Regressor
   X = df_diario[["Total_PVs", "Total_SKUs"]]
   y = df_diario["Total_Expedidos"]
 
   if len(df_diario) >= 3:
     rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
     rf_model.fit(X, y)
-
     pred_expedicao = rf_model.predict([[input_pvs, input_skus]])[0]
 
-    st.success(f"**Previsão de Expedição Estimada:** {int(pred_expedicao)} volumes / romaneios.")
-    st.caption("Modelo treinado via Random Forest Regressor com os dados das planilhas.")
+    st.success(
+        f"**Previsão de Expedição Estimada:** {int(pred_expedicao)} volumes /"
+        " romaneios."
+    )
   else:
     st.info("Insira mais dados para habilitar o treinamento do modelo.")
 
 with col_ml2:
-  st.markdown("### 📊 Médias Históricas do Período")
+  st.markdown("### 📊 Médias do Período")
   st.write(f"- **Média Diária de PVs:** `{media_pvs:.2f}`")
   st.write(f"- **Média Diária de SKUs:** `{media_skus:.2f}`")
   st.write(f"- **Média Diária de Expedições:** `{media_exp:.2f}`")
-  st.write(f"- **Proporção Média de SKUs por PV:** `{media_skus/media_pvs:.2f}`")
+  st.write(f"- **Proporção SKUs/PV:** `{media_skus/media_pvs:.2f}`")
 
 # --- TABELA DETALHADA ---
 with st.expander("🔍 Visualizar Tabela Consolidada"):
