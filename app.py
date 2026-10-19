@@ -142,7 +142,7 @@ def load_data(file_p, file_r, file_f):
     try:
       df_fat_detalhado = pd.read_excel(file_f)
     except Exception as e:
-      st.error(f"Erro ao carregar arquivo enviado de Faturamento: {e}")
+      st.error(f"Erro ao carregar arquivo de Faturamento: {e}")
   elif os.path.exists("DadosFaturamento.xlsx"):
     try:
       df_fat_detalhado = pd.read_excel("DadosFaturamento.xlsx")
@@ -498,36 +498,33 @@ fig_comp.update_layout(**layout_graficos)
 fig_comp.update_layout(barmode="group", yaxis=dict(title="<b>Quantidade</b>"))
 st.plotly_chart(fig_comp, use_container_width=True)
 
-# --- GRÁFICOS DE RANKING (PVS E FATURAMENTO POR CLIENTE) ---
+# --- GRÁFICOS DE RANKING DIÁRIO (LADO A LADO) ---
 st.divider()
+st.subheader("🥇 Rankings Diários de Desempenho por Cliente")
+
+# Seletor global de data para os dois rankings de cliente
+datas_disponiveis = df_diario["Data_Str"].tolist()
+data_selecionada = st.selectbox(
+    "📅 Selecione a Data para Filtro dos Rankings Diários:",
+    datas_disponiveis,
+    index=len(datas_disponiveis) - 1,
+)
 
 col_rank1, col_rank2 = st.columns(2)
 
 with col_rank1:
-  # --- GRÁFICO 5A: TOP 5 CLIENTES POR PVs NO DIA ---
+  st.markdown("### 🏆 Top 5 Clientes: Pedidos de Venda (PVs)")
   if (
       df_prod_bruto is not None
       and "CLIENTE" in df_prod_bruto.columns
       and "PV" in df_prod_bruto.columns
   ):
-    st.subheader("🏆 Top 5 Clientes: Pedidos de Venda (PVs)")
-
     df_pb_cliente = df_prod_bruto.copy()
     df_pb_cliente["DATA_STR"] = pd.to_datetime(
         df_pb_cliente["DATA"], errors="coerce"
     ).dt.strftime("%Y-%m-%d")
-    datas_disponiveis = sorted(df_pb_cliente["DATA_STR"].dropna().unique())
 
-    data_selecionada_pv = st.selectbox(
-        "Data (Ranking de PVs):",
-        datas_disponiveis,
-        index=len(datas_disponiveis) - 1,
-        key="sel_pv",
-    )
-
-    df_top_dia = df_pb_cliente[
-        df_pb_cliente["DATA_STR"] == data_selecionada_pv
-    ]
+    df_top_dia = df_pb_cliente[df_pb_cliente["DATA_STR"] == data_selecionada]
     df_ranking_pv = (
         df_top_dia.groupby("CLIENTE")["PV"]
         .nunique()
@@ -537,38 +534,40 @@ with col_rank1:
     )
     df_ranking_pv = df_ranking_pv.sort_values("Qtd_PVs", ascending=True)
 
-    fig_top_pv = go.Figure()
-    fig_top_pv.add_trace(
-        go.Bar(
-            y=df_ranking_pv["CLIENTE"],
-            x=df_ranking_pv["Qtd_PVs"],
-            orientation="h",
-            marker=dict(color="#3a86ff", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)} PVs</b>" for v in df_ranking_pv["Qtd_PVs"]],
-            textfont=dict(color="#ffffff", size=12),
-            textangle=0,
-            textposition="auto",
-            cliponaxis=False,
-        )
-    )
-    fig_top_pv.update_layout(**layout_graficos)
-    fig_top_pv.update_layout(
-        xaxis=dict(
-            title=dict(text="<b>Qtd. Pedidos de Venda (PV)</b>"), type="linear"
-        ),
-        yaxis=dict(title=dict(text="<b>Cliente</b>")),
-        margin=dict(l=140, r=40, t=30, b=40),
-    )
-    st.plotly_chart(fig_top_pv, use_container_width=True)
+    if not df_ranking_pv.empty:
+      fig_top_pv = go.Figure()
+      fig_top_pv.add_trace(
+          go.Bar(
+              y=df_ranking_pv["CLIENTE"],
+              x=df_ranking_pv["Qtd_PVs"],
+              orientation="h",
+              marker=dict(color="#3a86ff", line=dict(color="#000000", width=1)),
+              text=[f"<b>{int(v)} PVs</b>" for v in df_ranking_pv["Qtd_PVs"]],
+              textfont=dict(color="#ffffff", size=12),
+              textangle=0,
+              textposition="auto",
+              cliponaxis=False,
+          )
+      )
+      fig_top_pv.update_layout(**layout_graficos)
+      fig_top_pv.update_layout(
+          xaxis=dict(
+              title=dict(text="<b>Qtd. Pedidos de Venda (PV)</b>"),
+              type="linear",
+          ),
+          yaxis=dict(title=dict(text="<b>Cliente</b>")),
+          margin=dict(l=140, r=40, t=30, b=40),
+      )
+      st.plotly_chart(fig_top_pv, use_container_width=True)
+    else:
+      st.info(f"Sem lançamentos de PVs para a data {data_selecionada}.")
 
 with col_rank2:
-  # --- GRÁFICO 5B: TOP 5 CLIENTES POR VALOR FATURADO (R$) NO DIA ---
-  st.subheader("💰 Top 5 Clientes: Maior Faturamento (R$)")
+  st.markdown("### 💰 Top 5 Clientes: Maior Faturamento (R$)")
 
   if df_fat_detalhado is not None:
     df_fd = df_fat_detalhado.copy()
 
-    # Mapeamento automático de colunas
     col_cli = (
         "Nome Fantasia"
         if "Nome Fantasia" in df_fd.columns
@@ -592,28 +591,20 @@ with col_rank2:
     df_fd["DATA_STR"] = pd.to_datetime(
         df_fd[col_emissao], errors="coerce"
     ).dt.strftime("%Y-%m-%d")
-    datas_disp_fat = sorted(df_fd["DATA_STR"].dropna().unique())
 
-    if len(datas_disp_fat) > 0:
-      data_selecionada_fat = st.selectbox(
-          "Data (Ranking de Faturamento):",
-          datas_disp_fat,
-          index=len(datas_disp_fat) - 1,
-          key="sel_fat",
-      )
+    df_top_fat_dia = df_fd[df_fd["DATA_STR"] == data_selecionada]
+    df_ranking_fat = (
+        df_top_fat_dia.groupby(col_cli)[col_valor]
+        .sum()
+        .reset_index(name="Total_Faturado")
+        .sort_values("Total_Faturado", ascending=False)
+        .head(5)
+    )
+    df_ranking_fat = df_ranking_fat.sort_values(
+        "Total_Faturado", ascending=True
+    )
 
-      df_top_fat_dia = df_fd[df_fd["DATA_STR"] == data_selecionada_fat]
-      df_ranking_fat = (
-          df_top_fat_dia.groupby(col_cli)[col_valor]
-          .sum()
-          .reset_index(name="Total_Faturado")
-          .sort_values("Total_Faturado", ascending=False)
-          .head(5)
-      )
-      df_ranking_fat = df_ranking_fat.sort_values(
-          "Total_Faturado", ascending=True
-      )
-
+    if not df_ranking_fat.empty:
       labels_fat = [
           f"<b>R$ {v:,.2f}</b>".replace(",", "X")
           .replace(".", ",")
@@ -645,11 +636,11 @@ with col_rank2:
       )
       st.plotly_chart(fig_top_fat, use_container_width=True)
     else:
-      st.info("Nenhuma data válida encontrada na planilha de Faturamento.")
+      st.info(f"Sem lançamentos de Faturamento para a data {data_selecionada}.")
   else:
     st.info(
-        "Faça o upload do arquivo `DadosFaturamento.xlsx` na barra lateral para"
-        " exibir o Ranking de Faturamento por Cliente."
+        "Carregue a planilha `DadosFaturamento.xlsx` na barra lateral para"
+        " exibir o ranking de faturamento."
     )
 
 # --- MACHINE LEARNING ---
