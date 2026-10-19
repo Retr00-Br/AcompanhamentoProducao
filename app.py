@@ -160,7 +160,7 @@ if df_prod_tratado is None or df_rom_tratado is None:
   st.warning("Por favor, faça o upload das planilhas na barra lateral para iniciar.")
   st.stop()
 
-# --- CONSOLIDAÇÃO DOS DADOS DIÁRIOS ---
+# --- CONSOLIDAÇÃO OPERACIONAL EXCLUSIVA (PRODUÇÃO & ROMANEIOS) ---
 df_p = df_prod_tratado.copy()
 df_p["DATA"] = pd.to_datetime(df_p["DATA"], errors="coerce")
 df_p.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
@@ -198,11 +198,12 @@ df_r = df_rom_tratado.copy()
 df_r["DATA"] = pd.to_datetime(df_r["Dt. Romaneio"], errors="coerce")
 df_r.rename(columns={"Qtd. Expedição": "Total_Expedidos"}, inplace=True)
 
+# Merge apenas entre Produção e Romaneios (série operacional)
 df_diario = pd.merge(
     df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
 ).fillna(0)
 
-# Faturamento Calculado da Planilha de Faturamento
+# Faturamento cruzado APENAS para as datas operacionais
 if df_fat_detalhado is not None:
   df_fd_calc = df_fat_detalhado.copy()
   col_emissao_calc = (
@@ -229,7 +230,8 @@ if df_fat_detalhado is not None:
       .reset_index(name="Valor_Faturado")
   )
 
-  df_diario = pd.merge(df_diario, df_fat_diario_agg, on="DATA", how="outer").fillna(
+  # HOW='LEFT' para NÃO incluir datas exclusivas da planilha de faturamento nos gráficos operacionais
+  df_diario = pd.merge(df_diario, df_fat_diario_agg, on="DATA", how="left").fillna(
       0
   )
 else:
@@ -355,7 +357,7 @@ fig_fat.add_trace(
     go.Scatter(
         x=df_diario["Data_Str"],
         y=df_diario["Valor_Faturado"],
-        name="Valor Faturado Real (R$)",
+        name="Valor Faturado (R$)",
         mode="lines+markers+text",
         text=fat_labels,
         textfont=dict(color="#000000", size=13),
