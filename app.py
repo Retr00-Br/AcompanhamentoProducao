@@ -498,11 +498,10 @@ fig_comp.update_layout(**layout_graficos)
 fig_comp.update_layout(barmode="group", yaxis=dict(title="<b>Quantidade</b>"))
 st.plotly_chart(fig_comp, use_container_width=True)
 
-# --- GRÁFICOS DE RANKING DIÁRIO (LADO A LADO) ---
+# --- RANKINGS DIÁRIOS DE CLIENTES ---
 st.divider()
 st.subheader("🥇 Rankings Diários de Desempenho por Cliente")
 
-# Seletor global de data para os dois rankings de cliente
 datas_disponiveis = df_diario["Data_Str"].tolist()
 data_selecionada = st.selectbox(
     "📅 Selecione a Data para Filtro dos Rankings Diários:",
@@ -638,10 +637,100 @@ with col_rank2:
     else:
       st.info(f"Sem lançamentos de Faturamento para a data {data_selecionada}.")
   else:
-    st.info(
-        "Carregue a planilha `DadosFaturamento.xlsx` na barra lateral para"
-        " exibir o ranking de faturamento."
+    st.info("Carregue a planilha de Faturamento na barra lateral.")
+
+# --- NOVO GRÁFICO: TOP 10 FATURAMENTO POR CLIENTE (DIÁRIO / GERAL) ---
+st.divider()
+st.subheader(
+    "💎 Ranking Top 10 Clientes por Faturamento Monetário (R$) - Visão"
+    " Expandida"
+)
+
+if df_fat_detalhado is not None:
+  df_fd10 = df_fat_detalhado.copy()
+
+  col_cli = (
+      "Nome Fantasia"
+      if "Nome Fantasia" in df_fd10.columns
+      else ("CLIENTE" if "CLIENTE" in df_fd10.columns else df_fd10.columns[2])
+  )
+  col_emissao = (
+      "Emissão"
+      if "Emissão" in df_fd10.columns
+      else ("DATA" if "DATA" in df_fd10.columns else df_fd10.columns[1])
+  )
+  col_valor = (
+      "Valor"
+      if "Valor" in df_fd10.columns
+      else (
+          "Vlr Faturado"
+          if "Vlr Faturado" in df_fd10.columns
+          else df_fd10.columns[-1]
+      )
+  )
+
+  df_fd10["DATA_STR"] = pd.to_datetime(
+      df_fd10[col_emissao], errors="coerce"
+  ).dt.strftime("%Y-%m-%d")
+
+  modo_top10 = st.radio(
+      "Modo de Exibição do Top 10:",
+      ["Por Dia Selecionado", "Acumulado do Período Geral"],
+      horizontal=True,
+  )
+
+  if modo_top10 == "Por Dia Selecionado":
+    df_top10_filtrado = df_fd10[df_fd10["DATA_STR"] == data_selecionada]
+    titulo_top10 = (
+        f"Top 10 Clientes por Faturamento no Dia: {data_selecionada}"
     )
+  else:
+    df_top10_filtrado = df_fd10
+    titulo_top10 = "Top 10 Clientes por Faturamento Acumulado no Período"
+
+  df_top10 = (
+      df_top10_filtrado.groupby(col_cli)[col_valor]
+      .sum()
+      .reset_index(name="Total_Faturado")
+      .sort_values("Total_Faturado", ascending=False)
+      .head(10)
+  )
+  df_top10 = df_top10.sort_values("Total_Faturado", ascending=True)
+
+  if not df_top10.empty:
+    labels_top10 = [
+        f"<b>R$ {v:,.2f}</b>".replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+        for v in df_top10["Total_Faturado"]
+    ]
+
+    fig_top10 = go.Figure()
+    fig_top10.add_trace(
+        go.Bar(
+            y=df_top10[col_cli],
+            x=df_top10["Total_Faturado"],
+            orientation="h",
+            marker=dict(color="#118ab2", line=dict(color="#000000", width=1)),
+            text=labels_top10,
+            textfont=dict(color="#ffffff", size=12),
+            textangle=0,
+            textposition="auto",
+            cliponaxis=False,
+        )
+    )
+    fig_top10.update_layout(**layout_graficos)
+    fig_top10.update_layout(
+        title=dict(text=f"<b>{titulo_top10}</b>"),
+        xaxis=dict(
+            title=dict(text="<b>Valor Faturado Total (R$)</b>"), type="linear"
+        ),
+        yaxis=dict(title=dict(text="<b>Cliente</b>")),
+        margin=dict(l=180, r=40, t=50, b=40),
+    )
+    st.plotly_chart(fig_top10, use_container_width=True)
+  else:
+    st.info("Nenhum dado encontrado para o filtro selecionado.")
 
 # --- MACHINE LEARNING ---
 st.divider()
