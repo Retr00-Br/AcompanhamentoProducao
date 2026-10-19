@@ -10,7 +10,7 @@ st.set_page_config(
     page_title="Dashboard - Logística & Operação", page_icon="📦", layout="wide"
 )
 
-# --- ESTILIZAÇÃO CSS CUSTOMIZADA (TEXTOS EM PRETO E ALTO CONTRASTE) ---
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
 st.markdown(
     """
     <style>
@@ -20,7 +20,7 @@ st.markdown(
         color: #000000 !important;
     }
     
-    /* Cores de Títulos, Subtítulos, Parágrafos e Rótulos na cor PRETA */
+    /* Cores de Títulos, Subtítulos, Parágrafos e Rótulos em PRETO */
     h1, h2, h3, h4, h5, h6 {
         color: #000000 !important;
         font-weight: 800 !important;
@@ -218,7 +218,7 @@ df_diario = pd.merge(
 df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 df_diario["Data_Str"] = df_diario["DATA"].dt.strftime("%Y-%m-%d")
 
-# Layout de Gráficos (Fundo Claro com Textos/Títulos em PRETO)
+# Layout dos Gráficos
 layout_graficos = dict(
     template="plotly_white",
     plot_bgcolor="rgba(0,0,0,0)",
@@ -311,7 +311,9 @@ fig_fat.add_trace(
         marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
         textfont=dict(color="#ffffff", size=13),
+        textangle=0,
         textposition="auto",
+        cliponaxis=False,
         yaxis="y1",
     )
 )
@@ -330,6 +332,7 @@ fig_fat.add_trace(
         text=fat_labels,
         textfont=dict(color="#000000", size=13),
         textposition="top center",
+        textangle=0,
         marker=dict(color="#2ec4b6", size=9),
         line=dict(color="#2ec4b6", width=4),
         yaxis="y2",
@@ -371,7 +374,9 @@ fig_unificado.add_trace(
         marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
         textfont=dict(color="#ffffff", size=13),
+        textangle=0,
         textposition="auto",
+        cliponaxis=False,
         yaxis="y1",
     )
 )
@@ -384,6 +389,7 @@ fig_unificado.add_trace(
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_SKUs"]],
         textfont=dict(color="#000000", size=13),
         textposition="top center",
+        textangle=0,
         marker=dict(color="#d97706", size=9),
         line=dict(color="#d97706", width=4),
         yaxis="y2",
@@ -422,7 +428,9 @@ fig_status_isolado.add_trace(
         marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["SAUDAVEL"]],
         textfont=dict(color="#ffffff", size=13),
+        textangle=0,  # Força o número a ficar reto
         textposition="auto",
+        cliponaxis=False,
     )
 )
 fig_status_isolado.add_trace(
@@ -433,7 +441,9 @@ fig_status_isolado.add_trace(
         marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["BACKLOG"]],
         textfont=dict(color="#ffffff", size=13),
+        textangle=0,  # Força o número a ficar reto
         textposition="auto",
+        cliponaxis=False,
     )
 )
 fig_status_isolado.update_layout(**layout_graficos)
@@ -454,7 +464,9 @@ fig_comp.add_trace(
         marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
         textfont=dict(color="#ffffff", size=13),
+        textangle=0,  # Força o número a ficar reto
         textposition="auto",
+        cliponaxis=False,
     )
 )
 fig_comp.add_trace(
@@ -465,13 +477,13 @@ fig_comp.add_trace(
         marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_Expedidos"]],
         textfont=dict(color="#ffffff", size=13),
+        textangle=0,  # Força o número a ficar reto
         textposition="auto",
+        cliponaxis=False,
     )
 )
 fig_comp.update_layout(**layout_graficos)
-fig_comp.update_layout(
-    barmode="group", yaxis=dict(title="<b>Quantidade</b>")
-)
+fig_comp.update_layout(barmode="group", yaxis=dict(title="<b>Quantidade</b>"))
 st.plotly_chart(fig_comp, use_container_width=True)
 
 # --- MACHINE LEARNING ---
@@ -512,7 +524,9 @@ with col_ml1:
 
 with col_ml2:
   st.markdown("### 📊 Estatísticas Diárias do Período")
-  st.write(f"- **Média de Notas Saudáveis/dia:** `{df_diario['SAUDAVEL'].mean():.2f}`")
+  st.write(
+      f"- **Média de Notas Saudáveis/dia:** `{df_diario['SAUDAVEL'].mean():.2f}`"
+  )
   st.write(f"- **Média de Backlog/dia:** `{df_diario['BACKLOG'].mean():.2f}`")
   st.write(f"- **Média Diária de SKUs:** `{df_diario['Total_SKUs'].mean():.2f}`")
   st.write(
