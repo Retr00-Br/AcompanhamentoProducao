@@ -105,7 +105,7 @@ uploaded_rom = st.sidebar.file_uploader(
     "Planilha de Romaneios (.xlsx)", type=["xlsx"]
 )
 uploaded_fat = st.sidebar.file_uploader(
-    "Planilha de Faturamento (.xlsx)", type=["xlsx"]
+    "Planilha de Faturamento Detalhado (.xlsx)", type=["xlsx"]
 )
 
 
@@ -138,12 +138,16 @@ def load_data(file_p, file_r, file_f):
       st.error(f"Erro ao carregar Romaneios: {e}")
 
   # 3. Faturamento Detalhado por Cliente
-  file_f_path = file_f if file_f is not None else "DadosFaturamento.xlsx"
-  if os.path.exists(file_f_path) or file_f is not None:
+  if file_f is not None:
     try:
-      df_fat_detalhado = pd.read_excel(file_f_path)
+      df_fat_detalhado = pd.read_excel(file_f)
     except Exception as e:
-      st.error(f"Erro ao carregar Faturamento Detalhado: {e}")
+      st.error(f"Erro ao carregar arquivo enviado de Faturamento: {e}")
+  elif os.path.exists("DadosFaturamento.xlsx"):
+    try:
+      df_fat_detalhado = pd.read_excel("DadosFaturamento.xlsx")
+    except Exception as e:
+      st.error(f"Erro ao carregar DadosFaturamento.xlsx local: {e}")
 
   return (
       df_prod_bruto,
@@ -559,10 +563,12 @@ with col_rank1:
 
 with col_rank2:
   # --- GRÁFICO 5B: TOP 5 CLIENTES POR VALOR FATURADO (R$) NO DIA ---
-  if df_fat_detalhado is not None:
-    st.subheader("💰 Top 5 Clientes: Maior Faturamento (R$)")
+  st.subheader("💰 Top 5 Clientes: Maior Faturamento (R$)")
 
+  if df_fat_detalhado is not None:
     df_fd = df_fat_detalhado.copy()
+
+    # Mapeamento automático de colunas
     col_cli = (
         "Nome Fantasia"
         if "Nome Fantasia" in df_fd.columns
@@ -588,53 +594,63 @@ with col_rank2:
     ).dt.strftime("%Y-%m-%d")
     datas_disp_fat = sorted(df_fd["DATA_STR"].dropna().unique())
 
-    data_selecionada_fat = st.selectbox(
-        "Data (Ranking de Faturamento):",
-        datas_disp_fat,
-        index=len(datas_disp_fat) - 1,
-        key="sel_fat",
-    )
+    if len(datas_disp_fat) > 0:
+      data_selecionada_fat = st.selectbox(
+          "Data (Ranking de Faturamento):",
+          datas_disp_fat,
+          index=len(datas_disp_fat) - 1,
+          key="sel_fat",
+      )
 
-    df_top_fat_dia = df_fd[df_fd["DATA_STR"] == data_selecionada_fat]
-    df_ranking_fat = (
-        df_top_fat_dia.groupby(col_cli)[col_valor]
-        .sum()
-        .reset_index(name="Total_Faturado")
-        .sort_values("Total_Faturado", ascending=False)
-        .head(5)
-    )
-    df_ranking_fat = df_ranking_fat.sort_values("Total_Faturado", ascending=True)
+      df_top_fat_dia = df_fd[df_fd["DATA_STR"] == data_selecionada_fat]
+      df_ranking_fat = (
+          df_top_fat_dia.groupby(col_cli)[col_valor]
+          .sum()
+          .reset_index(name="Total_Faturado")
+          .sort_values("Total_Faturado", ascending=False)
+          .head(5)
+      )
+      df_ranking_fat = df_ranking_fat.sort_values(
+          "Total_Faturado", ascending=True
+      )
 
-    labels_fat = [
-        f"<b>R$ {v:,.2f}</b>".replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-        for v in df_ranking_fat["Total_Faturado"]
-    ]
+      labels_fat = [
+          f"<b>R$ {v:,.2f}</b>".replace(",", "X")
+          .replace(".", ",")
+          .replace("X", ".")
+          for v in df_ranking_fat["Total_Faturado"]
+      ]
 
-    fig_top_fat = go.Figure()
-    fig_top_fat.add_trace(
-        go.Bar(
-            y=df_ranking_fat[col_cli],
-            x=df_ranking_fat["Total_Faturado"],
-            orientation="h",
-            marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
-            text=labels_fat,
-            textfont=dict(color="#ffffff", size=12),
-            textangle=0,
-            textposition="auto",
-            cliponaxis=False,
-        )
+      fig_top_fat = go.Figure()
+      fig_top_fat.add_trace(
+          go.Bar(
+              y=df_ranking_fat[col_cli],
+              x=df_ranking_fat["Total_Faturado"],
+              orientation="h",
+              marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
+              text=labels_fat,
+              textfont=dict(color="#ffffff", size=12),
+              textangle=0,
+              textposition="auto",
+              cliponaxis=False,
+          )
+      )
+      fig_top_fat.update_layout(**layout_graficos)
+      fig_top_fat.update_layout(
+          xaxis=dict(
+              title=dict(text="<b>Valor Faturado (R$)</b>"), type="linear"
+          ),
+          yaxis=dict(title=dict(text="<b>Cliente</b>")),
+          margin=dict(l=140, r=40, t=30, b=40),
+      )
+      st.plotly_chart(fig_top_fat, use_container_width=True)
+    else:
+      st.info("Nenhuma data válida encontrada na planilha de Faturamento.")
+  else:
+    st.info(
+        "Faça o upload do arquivo `DadosFaturamento.xlsx` na barra lateral para"
+        " exibir o Ranking de Faturamento por Cliente."
     )
-    fig_top_fat.update_layout(**layout_graficos)
-    fig_top_fat.update_layout(
-        xaxis=dict(
-            title=dict(text="<b>Valor Faturado (R$)</b>"), type="linear"
-        ),
-        yaxis=dict(title=dict(text="<b>Cliente</b>")),
-        margin=dict(l=140, r=40, t=30, b=40),
-    )
-    st.plotly_chart(fig_top_fat, use_container_width=True)
 
 # --- MACHINE LEARNING ---
 st.divider()
