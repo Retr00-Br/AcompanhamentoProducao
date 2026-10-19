@@ -473,9 +473,15 @@ fig_comp.update_layout(**layout_graficos)
 fig_comp.update_layout(barmode="group", yaxis=dict(title="<b>Quantidade</b>"))
 st.plotly_chart(fig_comp, use_container_width=True)
 
-# --- GRÁFICO 5: TOP 5 CLIENTES POR DIA (NOVO) ---
-if df_prod_bruto is not None and "CLIENTE" in df_prod_bruto.columns:
-  st.subheader("🏆 Top 5 Clientes por Volume de Notas Realizadas no Dia")
+# --- GRÁFICO 5: TOP 5 CLIENTES POR DIA (BASEADO EM PEDIDOS DE VENDA DIÁRIOS) ---
+if (
+    df_prod_bruto is not None
+    and "CLIENTE" in df_prod_bruto.columns
+    and "PV" in df_prod_bruto.columns
+):
+  st.subheader(
+      "🏆 Top 5 Clientes por Pedidos de Venda (PVs) Produzidos no Dia"
+  )
 
   df_pb_cliente = df_prod_bruto.copy()
   df_pb_cliente["DATA_STR"] = pd.to_datetime(
@@ -491,27 +497,29 @@ if df_prod_bruto is not None and "CLIENTE" in df_prod_bruto.columns:
         index=len(datas_disponiveis) - 1,
     )
 
+  # Agrupamento diário por cliente contabilizando PVs únicos
   df_top_dia = df_pb_cliente[df_pb_cliente["DATA_STR"] == data_selecionada]
   df_ranking = (
-      df_top_dia.groupby("CLIENTE")
-      .size()
-      .reset_index(name="Qtd_Notas")
-      .sort_values("Qtd_Notas", ascending=False)
+      df_top_dia.groupby("CLIENTE")["PV"]
+      .nunique()
+      .reset_index(name="Qtd_PVs")
+      .sort_values("Qtd_PVs", ascending=False)
       .head(5)
   )
 
-  # Ordenar para exibição em barras horizontais (maior em cima)
-  df_ranking = df_ranking.sort_values("Qtd_Notas", ascending=True)
+  # Ordenar para barras horizontais (maior no topo)
+  df_ranking = df_ranking.sort_values("Qtd_PVs", ascending=True)
 
   fig_top_5 = go.Figure()
   fig_top_5.add_trace(
       go.Bar(
           y=df_ranking["CLIENTE"],
-          x=df_ranking["Qtd_Notas"],
+          x=df_ranking["Qtd_PVs"],
           orientation="h",
           marker=dict(color="#3a86ff", line=dict(color="#000000", width=1)),
-          text=[f"<b>{int(v)} notas</b>" for v in df_ranking["Qtd_Notas"]],
+          text=[f"<b>{int(v)} PVs</b>" for v in df_ranking["Qtd_PVs"]],
           textfont=dict(color="#ffffff", size=12),
+          textangle=0,
           textposition="auto",
           cliponaxis=False,
       )
@@ -520,7 +528,9 @@ if df_prod_bruto is not None and "CLIENTE" in df_prod_bruto.columns:
   fig_top_5.update_layout(**layout_graficos)
   fig_top_5.update_layout(
       xaxis=dict(
-          title=dict(text="<b>Quantidade de Notas Realizadas</b>"),
+          title=dict(
+              text="<b>Quantidade de Pedidos de Venda (PV) Produzidos</b>"
+          ),
           type="linear",
       ),
       yaxis=dict(title=dict(text="<b>Cliente</b>")),
