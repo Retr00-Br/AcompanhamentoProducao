@@ -10,44 +10,65 @@ st.set_page_config(
     page_title="Dashboard - Logística & Operação", page_icon="📦", layout="wide"
 )
 
-# --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA (TEXTOS EM PRETO E ALTO CONTRASTE) ---
 st.markdown(
     """
     <style>
+    /* Estilo Geral e Fundo do Dashboard */
     .main {
-        background-color: #0b132b;
-        color: #ffffff;
+        background-color: #f8f9fa;
+        color: #000000 !important;
     }
-    [data-testid="stSidebar"] {
-        background-color: #1c2541;
-        color: #ffffff;
+    
+    /* Cores de Títulos, Subtítulos, Parágrafos e Rótulos na cor PRETA */
+    h1, h2, h3, h4, h5, h6 {
+        color: #000000 !important;
+        font-weight: 800 !important;
     }
-    [data-testid="stMetric"] {
-        background-color: #1c2541;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #3a506b;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
-    [data-testid="stMetricLabel"] {
-        color: #a5c4d4 !important;
+    
+    p, span, label, div, .stMarkdown {
+        color: #000000 !important;
         font-weight: 600;
     }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #e9ecef;
+        color: #000000 !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: #000000 !important;
+    }
+
+    /* Cards de Métricas (KPIs) com textos em Preto */
+    [data-testid="stMetric"] {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #ced4da;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    [data-testid="stMetricLabel"] {
+        color: #000000 !important;
+        font-weight: 700 !important;
+        font-size: 1.1rem !important;
+    }
     [data-testid="stMetricValue"] {
-        color: #ffffff !important;
-        font-weight: 700;
+        color: #000000 !important;
+        font-weight: 800 !important;
     }
-    h1, h2, h3 {
-        color: #ffffff !important;
-        font-weight: 800;
+
+    /* Expander e Tabelas */
+    .streamlit-expanderHeader {
+        color: #000000 !important;
+        font-weight: 700 !important;
     }
-    p, span, label {
-        color: #d8e2dc !important;
-    }
+
     .logo-container {
         background-color: #ffffff;
         padding: 8px;
         border-radius: 10px;
+        border: 1px solid #ced4da;
         text-align: center;
     }
     </style>
@@ -76,7 +97,7 @@ with col_titulo:
 with col_logo2:
   if os.path.exists("logo2.png"):
     st.markdown(
-        '<div class="logo-container" style="background-color: #1c2541;">',
+        '<div class="logo-container" style="background-color: #ffffff;">',
         unsafe_allow_html=True,
     )
     st.image("logo2.png", width=120)
@@ -197,21 +218,22 @@ df_diario = pd.merge(
 df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 df_diario["Data_Str"] = df_diario["DATA"].dt.strftime("%Y-%m-%d")
 
-# Estilo padronizado de layout de alto contraste
-layout_contraste = dict(
-    template="plotly_dark",
+# Layout de Gráficos (Fundo Claro com Textos/Títulos em PRETO)
+layout_graficos = dict(
+    template="plotly_white",
     plot_bgcolor="rgba(0,0,0,0)",
     paper_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#ffffff", size=13),
+    font=dict(color="#000000", size=13, family="Arial"),
+    title_font=dict(color="#000000", size=16, family="Arial Black"),
     xaxis=dict(
-        title=dict(font=dict(size=14, color="#ffffff")),
-        tickfont=dict(color="#e0e0e0", size=12, family="Arial Black"),
+        title=dict(font=dict(size=14, color="#000000")),
+        tickfont=dict(color="#000000", size=12, family="Arial"),
         type="category",
     ),
     yaxis=dict(
-        title=dict(font=dict(size=14, color="#ffffff")),
-        tickfont=dict(color="#e0e0e0", size=12, family="Arial Black"),
-        gridcolor="#2a3a5e",
+        title=dict(font=dict(size=14, color="#000000")),
+        tickfont=dict(color="#000000", size=12, family="Arial"),
+        gridcolor="#dee2e6",
     ),
     legend=dict(
         orientation="h",
@@ -219,7 +241,7 @@ layout_contraste = dict(
         y=1.05,
         xanchor="right",
         x=1,
-        font=dict(size=12, color="#ffffff"),
+        font=dict(size=12, color="#000000"),
     ),
     margin=dict(l=40, r=40, t=50, b=40),
 )
@@ -286,11 +308,9 @@ fig_fat.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Pedidos de Venda (PV)",
-        marker=dict(
-            color="#0077b6", line=dict(color="#ffffff", width=1)
-        ),  # Azul escuro com borda branca
+        marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
-        textfont=dict(color="#ffffff", size=13, family="Arial"),
+        textfont=dict(color="#ffffff", size=13),
         textposition="auto",
         yaxis="y1",
     )
@@ -308,7 +328,7 @@ fig_fat.add_trace(
         name="Valor Faturado (R$)",
         mode="lines+markers+text",
         text=fat_labels,
-        textfont=dict(color="#2ec4b6", size=13, family="Arial"),
+        textfont=dict(color="#000000", size=13),
         textposition="top center",
         marker=dict(color="#2ec4b6", size=9),
         line=dict(color="#2ec4b6", width=4),
@@ -316,21 +336,21 @@ fig_fat.add_trace(
     )
 )
 
-fig_fat.update_layout(**layout_contraste)
+fig_fat.update_layout(**layout_graficos)
 fig_fat.update_layout(
     yaxis=dict(
         title=dict(
             text="<b>Qtd de Pedidos (PV)</b>",
-            font=dict(color="#00b4d8", size=14),
+            font=dict(color="#0077b6", size=14),
         ),
-        tickfont=dict(color="#ffffff", size=12),
+        tickfont=dict(color="#000000", size=12),
     ),
     yaxis2=dict(
         title=dict(
             text="<b>Valor Faturado (R$)</b>",
-            font=dict(color="#2ec4b6", size=14),
+            font=dict(color="#00a896", size=14),
         ),
-        tickfont=dict(color="#ffffff", size=12),
+        tickfont=dict(color="#000000", size=12),
         overlaying="y",
         side="right",
         showgrid=False,
@@ -348,7 +368,7 @@ fig_unificado.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Pedidos de Venda (PV)",
-        marker=dict(color="#0077b6", line=dict(color="#ffffff", width=1)),
+        marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
         textfont=dict(color="#ffffff", size=13),
         textposition="auto",
@@ -362,27 +382,27 @@ fig_unificado.add_trace(
         name="Total de SKUs",
         mode="lines+markers+text",
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_SKUs"]],
-        textfont=dict(color="#ff9f1c", size=13),
+        textfont=dict(color="#000000", size=13),
         textposition="top center",
-        marker=dict(color="#ff9f1c", size=9),
-        line=dict(color="#ff9f1c", width=4),
+        marker=dict(color="#d97706", size=9),
+        line=dict(color="#d97706", width=4),
         yaxis="y2",
     )
 )
-fig_unificado.update_layout(**layout_contraste)
+fig_unificado.update_layout(**layout_graficos)
 fig_unificado.update_layout(
     yaxis=dict(
         title=dict(
             text="<b>Qtd de Pedidos (PV)</b>",
-            font=dict(color="#00b4d8", size=14),
+            font=dict(color="#0077b6", size=14),
         ),
-        tickfont=dict(color="#ffffff", size=12),
+        tickfont=dict(color="#000000", size=12),
     ),
     yaxis2=dict(
         title=dict(
-            text="<b>Total de SKUs</b>", font=dict(color="#ff9f1c", size=14)
+            text="<b>Total de SKUs</b>", font=dict(color="#d97706", size=14)
         ),
-        tickfont=dict(color="#ffffff", size=12),
+        tickfont=dict(color="#000000", size=12),
         overlaying="y",
         side="right",
         showgrid=False,
@@ -399,7 +419,7 @@ fig_status_isolado.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["SAUDAVEL"],
         name="Notas Saudáveis",
-        marker=dict(color="#0f9f90", line=dict(color="#ffffff", width=1)),
+        marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["SAUDAVEL"]],
         textfont=dict(color="#ffffff", size=13),
         textposition="auto",
@@ -410,13 +430,13 @@ fig_status_isolado.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["BACKLOG"],
         name="Backlog",
-        marker=dict(color="#d9381e", line=dict(color="#ffffff", width=1)),
+        marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_diario["BACKLOG"]],
         textfont=dict(color="#ffffff", size=13),
         textposition="auto",
     )
 )
-fig_status_isolado.update_layout(**layout_contraste)
+fig_status_isolado.update_layout(**layout_graficos)
 fig_status_isolado.update_layout(
     barmode="stack", yaxis=dict(title="<b>Quantidade de Pedidos (PV)</b>")
 )
@@ -431,7 +451,7 @@ fig_comp.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_PVs"],
         name="Produzidos no Dia",
-        marker=dict(color="#0f9f90", line=dict(color="#ffffff", width=1)),
+        marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_PVs"]],
         textfont=dict(color="#ffffff", size=13),
         textposition="auto",
@@ -442,13 +462,13 @@ fig_comp.add_trace(
         x=df_diario["Data_Str"],
         y=df_diario["Total_Expedidos"],
         name="Expedidos no Dia (Romaneio)",
-        marker=dict(color="#d9381e", line=dict(color="#ffffff", width=1)),
+        marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
         text=[f"<b>{int(v)}</b>" for v in df_diario["Total_Expedidos"]],
         textfont=dict(color="#ffffff", size=13),
         textposition="auto",
     )
 )
-fig_comp.update_layout(**layout_contraste)
+fig_comp.update_layout(**layout_graficos)
 fig_comp.update_layout(
     barmode="group", yaxis=dict(title="<b>Quantidade</b>")
 )
