@@ -4,8 +4,15 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from cryptography.fernet import Fernet
 from sklearn.ensemble import RandomForestRegressor
+
+# Tratamento seguro da biblioteca cryptography (evita ModuleNotFoundError)
+try:
+  from cryptography.fernet import Fernet
+
+  HAS_CRYPTO = True
+except ImportError:
+  HAS_CRYPTO = False
 
 # Configuração da página
 st.set_page_config(
@@ -13,14 +20,6 @@ st.set_page_config(
     page_icon="📦",
     layout="wide",
 )
-
-# Importação condicional do cryptography
-try:
-  from cryptography.fernet import Fernet
-
-  HAS_CRYPTO = True
-except ImportError:
-  HAS_CRYPTO = False
 
 
 # ==========================================
@@ -46,7 +45,7 @@ class DataSecurityManager:
 # 2. CARREGAMENTO SEMIAUTOMÁTICO (BACK-END)
 # ==========================================
 class DataLoader:
-  """Lê as novas planilhas diretamente do diretório back-end ./data/ ou raiz"""
+  """Lê as novas planilhas diretamente do diretório back-end ./data/ ou da raiz."""
 
   DATA_DIR = "./data/"
 
@@ -301,8 +300,8 @@ def main():
 
   df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
-  # --- SELEÇÃO TEMPORAL (CALENDÁRIO / MÊS / SEMANA) ---
-  st.subheader("📅 Filtro Temporal de Análise")
+  # --- SELEÇÃO TEMPORAL GERAL (CALENDÁRIO / MÊS / SEMANA) ---
+  st.subheader("📅 Filtro Temporal de Análise Operacional")
   col_ft1, col_ft2 = st.columns([1.5, 3])
 
   with col_ft1:
@@ -648,7 +647,7 @@ def main():
         )
         st.plotly_chart(fig_top_pv, use_container_width=True)
 
-  # --- RANKING TOP 10 FATURAMENTO MONETÁRIO ---
+  # --- RANKING TOP 10 FATURAMENTO MONETÁRIO (COM CONTROLES PRÓPRIOS) ---
   st.divider()
   st.subheader("💎 Ranking Top 10 Clientes por Faturamento Monetário (R$)")
 
@@ -685,15 +684,38 @@ def main():
         )
     )
 
-    df_fd10["DATA_DT"] = pd.to_datetime(
+    df_fd10["DATA_STR"] = pd.to_datetime(
         df_fd10[col_emissao_10], errors="coerce"
-    ).dt.date
-    df_fd10_filtrado = df_fd10[
-        (df_fd10["DATA_DT"] >= dt_inicio) & (df_fd10["DATA_DT"] <= dt_fim)
-    ]
+    ).dt.strftime("%Y-%m-%d")
+    datas_fat_disponiveis = sorted(df_fd10["DATA_STR"].dropna().unique())
+
+    col_m, col_d = st.columns([2, 2])
+    with col_m:
+      modo_top10 = st.radio(
+          "Modo de Exibição do Top 10 Faturamento:",
+          ["Por Dia Selecionado", "Acumulado do Período Geral"],
+          horizontal=True,
+          key="modo_top10_fat",
+      )
+
+    if modo_top10 == "Por Dia Selecionado":
+      with col_d:
+        data_fat_top10_sel = st.selectbox(
+            "Selecione a Data para Filtro de Faturamento:",
+            datas_fat_disponiveis,
+            index=len(datas_fat_disponiveis) - 1,
+            key="sel_fat_top10_date",
+        )
+      df_top10_filtrado = df_fd10[df_fd10["DATA_STR"] == data_fat_top10_sel]
+      titulo_top10 = (
+          f"Top 10 Clientes por Faturamento no Dia: {data_fat_top10_sel}"
+      )
+    else:
+      df_top10_filtrado = df_fd10
+      titulo_top10 = "Top 10 Clientes por Faturamento Acumulado no Período"
 
     df_top10 = (
-        df_fd10_filtrado.groupby(col_cli_10)[col_valor_10]
+        df_top10_filtrado.groupby(col_cli_10)[col_valor_10]
         .sum()
         .reset_index(name="Total_Faturado")
         .sort_values("Total_Faturado", ascending=False)
@@ -721,13 +743,14 @@ def main():
       )
       fig_top10.update_layout(**layout_graficos)
       fig_top10.update_layout(
+          title=dict(text=f"<b>{titulo_top10}</b>"),
           xaxis=dict(title="<b>Valor Faturado (R$)</b>"),
           yaxis=dict(title="<b>Cliente</b>"),
-          margin=dict(l=180, r=40, t=30, b=40),
+          margin=dict(l=180, r=40, t=50, b=40),
       )
       st.plotly_chart(fig_top10, use_container_width=True)
     else:
-      st.info("Sem dados de faturamento para o período filtrado.")
+      st.info("Sem dados de faturamento para o filtro selecionado.")
 
   # --- MACHINE LEARNING ---
   st.divider()
