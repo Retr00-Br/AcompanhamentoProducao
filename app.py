@@ -273,11 +273,9 @@ def main():
   # --- TRATAMENTO DO FATURAMENTO DIÁRIO (COLUNA "Fat.") ---
   if df_fat_bruto is not None and not df_fat_bruto.empty:
     df_fb = df_fat_bruto.copy()
-    # A primeira linha pode conter os cabeçalhos das subcolunas (Fat. / Dev.)
-    col_data_fb = df_fb.columns[0]  # 'Data'
-    col_fat_col = df_fb.columns[1]  # Coluna de Faturamento '0101 - Matriz'
+    col_data_fb = df_fb.columns[0]
+    col_fat_col = df_fb.columns[1]
 
-    # Se a linha 0 tiver 'Fat.', filtramos apenas as linhas com data válida
     df_fb = df_fb.iloc[1:].copy()
     df_fb["DATA"] = pd.to_datetime(df_fb[col_data_fb], errors="coerce")
     df_fb["Valor_Faturado"] = pd.to_numeric(
@@ -438,6 +436,32 @@ def main():
         xaxis=dict(title="<b>Data de Emissão</b>"),
     )
     st.plotly_chart(fig_fat_solo, use_container_width=True)
+
+    # --- INSERÇÃO DO VALOR TOTAL SOMANDO A COLUNA FAT. NO PERÍODO ---
+    total_fat_bruto_periodo = df_fat_exclusivo["Valor_Faturado"].sum()
+    qtd_dias_faturados = len(
+        df_fat_exclusivo[df_fat_exclusivo["Valor_Faturado"] > 0]
+    )
+    media_fat_diaria = (
+        total_fat_bruto_periodo / qtd_dias_faturados
+        if qtd_dias_faturados > 0
+        else 0.0
+    )
+
+    col_tf1, col_tf2, col_tf3 = st.columns(3)
+    col_tf1.metric(
+        "💵 Total Faturado no Período (Fat.)",
+        f"R$ {total_fat_bruto_periodo:,.2f}".replace(",", "X")
+        .replace(".", ",")
+        .replace("X", "."),
+    )
+    col_tf2.metric("📅 Dias com Faturamento", f"{qtd_dias_faturados} dias")
+    col_tf3.metric(
+        "📊 Média Diária Faturada",
+        f"R$ {media_fat_diaria:,.2f}".replace(",", "X")
+        .replace(".", ",")
+        .replace("X", "."),
+    )
   else:
     st.info("Nenhum dado de faturamento encontrado.")
 
