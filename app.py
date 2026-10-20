@@ -97,14 +97,25 @@ class DataLoader:
     if df_rom_tratado is None:
       df_rom_tratado = self.read_dataframe("DadosRomaneios.xlsx", "Planilha1")
 
-    # Faturamento por cliente
+    # Faturamento por cliente (Detalhamento)
     df_fat_detalhado = self.read_dataframe(
         "DadosFaturamento.xlsx", "Faturamento por cliente"
     )
     if df_fat_detalhado is None:
       df_fat_detalhado = self.read_dataframe("DadosFaturamento.xlsx", 0)
 
-    return df_prod_bruto, df_prod_tratado, df_rom_tratado, df_fat_detalhado
+    # Faturamento Bruto Diário (Aba FaturamentoBruto -> Coluna "Fat.")
+    df_fat_bruto = self.read_dataframe(
+        "DadosFaturamento.xlsx", "FaturamentoBruto"
+    )
+
+    return (
+        df_prod_bruto,
+        df_prod_tratado,
+        df_rom_tratado,
+        df_fat_detalhado,
+        df_fat_bruto,
+    )
 
 
 # ==========================================
@@ -172,9 +183,13 @@ def main():
 
   os.makedirs("./data/", exist_ok=True)
   loader = DataLoader()
-  df_prod_bruto, df_prod_tratado, df_rom_tratado, df_fat_detalhado = (
-      loader.load_all_data()
-  )
+  (
+      df_prod_bruto,
+      df_prod_tratado,
+      df_rom_tratado,
+      df_fat_detalhado,
+      df_fat_bruto,
+  ) = loader.load_all_data()
 
   if df_prod_tratado is None or df_rom_tratado is None:
     st.info(
@@ -255,10 +270,31 @@ def main():
       df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
   ).fillna(0)
 
-  # --- TRATAMENTO COMPLETO DE FATURAMENTO ---
-  if df_fat_detalhado is not None:
-    df_fd_calc = df_fat_detalhado.copy()
+  # --- TRATAMENTO DO FATURAMENTO DIÁRIO (COLUNA "Fat.") ---
+  if df_fat_bruto is not None and not df_fat_bruto.empty:
+    df_fb = df_fat_bruto.copy()
+    # A primeira linha pode conter os cabeçalhos das subcolunas (Fat. / Dev.)
+    col_data_fb = df_fb.columns[0]  # 'Data'
+    col_fat_col = df_fb.columns[1]  # Coluna de Faturamento '0101 - Matriz'
 
+    # Se a linha 0 tiver 'Fat.', filtramos apenas as linhas com data válida
+    df_fb = df_fb.iloc[1:].copy()
+    df_fb["DATA"] = pd.to_datetime(df_fb[col_data_fb], errors="coerce")
+    df_fb["Valor_Faturado"] = pd.to_numeric(
+        df_fb[col_fat_col], errors="coerce"
+    ).fillna(0)
+
+    df_fat_diario = (
+        df_fb.dropna(subset=["DATA"])[["DATA", "Valor_Faturado"]]
+        .sort_values("DATA")
+        .reset_index(drop=True)
+    )
+
+    df_diario = pd.merge(df_diario, df_fat_diario, on="DATA", how="left").fillna(
+        0
+    )
+  elif df_fat_detalhado is not None:
+    df_fd_calc = df_fat_detalhado.copy()
     col_f_emissao = (
         "Data"
         if "Data" in df_fd_calc.columns
@@ -290,7 +326,6 @@ def main():
         .sum()
         .reset_index(name="Valor_Faturado")
     )
-
     df_diario = pd.merge(df_diario, df_fat_diario, on="DATA", how="left").fillna(
         0
     )
@@ -310,9 +345,9 @@ def main():
   )
 
   # ==========================================
-  # PRIMEIRA PARTE: GRÁFICO ISOLADO DE FATURAMENTO
+  # PRIMEIRA PARTE: GRÁFICO ISOLADO DE FATURAMENTO (COLUNA "Fat.")
   # ==========================================
-  st.subheader("💰 Faturamento Diário Total (Histórico Completo)")
+  st.subheader("💰 Faturamento Diário Total (Coluna Fat. - Histórico Completo)")
 
   if not df_fat_diario.empty:
     df_fat_diario_plot = df_fat_diario.sort_values("DATA").copy()
@@ -320,7 +355,6 @@ def main():
         "%Y-%m-%d"
     )
 
-    # Filtro temporal exclusivo para o faturamento
     col_fat_f1, col_fat_f2 = st.columns([1.5, 3])
 
     with col_fat_f1:
@@ -390,7 +424,7 @@ def main():
         go.Bar(
             x=df_fat_exclusivo["Data_Str"],
             y=df_fat_exclusivo["Valor_Faturado"],
-            name="Valor Faturado (R$)",
+            name="Valor Faturado (Fat.)",
             marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
             text=labels_fat_solo,
             textfont=dict(color="#000000", size=11),
@@ -400,7 +434,7 @@ def main():
     )
     fig_fat_solo.update_layout(**layout_graficos)
     fig_fat_solo.update_layout(
-        yaxis=dict(title="<b>Valor Faturado (R$)</b>"),
+        yaxis=dict(title="<b>Valor Faturado - Fat. (R$)</b>"),
         xaxis=dict(title="<b>Data de Emissão</b>"),
     )
     st.plotly_chart(fig_fat_solo, use_container_width=True)
@@ -495,36 +529,11 @@ def main():
   total_backlog = int(df_filtrado["BACKLOG"].sum())
   total_skus = int(df_filtrado["Total_SKUs"].sum())
 
-  if df_fat_detalhado is not None:
-    df_fd_kpi = df_fat_detalhado.copy()
-    col_f_emissao_k = (
-        "Data"
-        if "Data" in df_fd_kpi.columns
-        else (
-            "Emissão"
-            if "Emissão" in df_fd_kpi.columns
-            else df_fd_kpi.columns[0]
-        )
-    )
-    col_f_valor_k = (
-        "R$ Fatur."
-        if "R$ Fatur." in df_fd_kpi.columns
-        else (
-            "Valor"
-            if "Valor" in df_fd_kpi.columns
-            else (
-                "Vlr Faturado"
-                if "Vlr Faturado" in df_fd_kpi.columns
-                else df_fd_kpi.columns[-1]
-            )
-        )
-    )
-    df_fd_kpi["DT"] = pd.to_datetime(
-        df_fd_kpi[col_f_emissao_k], errors="coerce"
-    ).dt.date
-    total_fat = df_fd_kpi[
-        (df_fd_kpi["DT"] >= dt_inicio) & (df_fd_kpi["DT"] <= dt_fim)
-    ][col_f_valor_k].sum()
+  if not df_fat_diario.empty:
+    df_fat_diario["DT"] = df_fat_diario["DATA"].dt.date
+    total_fat = df_fat_diario[
+        (df_fat_diario["DT"] >= dt_inicio) & (df_fat_diario["DT"] <= dt_fim)
+    ]["Valor_Faturado"].sum()
   else:
     total_fat = 0.0
 
@@ -533,7 +542,7 @@ def main():
   k3.metric("⚠️ Backlog", total_backlog)
   k4.metric("📦 Total SKUs", total_skus)
   k5.metric(
-      "💰 Faturamento Total",
+      "💰 Faturamento Total (Fat.)",
       f"R$ {total_fat:,.2f}".replace(",", "X")
       .replace(".", ",")
       .replace("X", "."),
@@ -557,7 +566,7 @@ def main():
       go.Scatter(
           x=df_filtrado["Data_Str"],
           y=df_filtrado["Valor_Faturado"],
-          name="Faturamento (R$)",
+          name="Faturamento (Fat.)",
           mode="lines+markers+text",
           text=[
               f"<b>R$ {v:,.0f}</b>".replace(",", ".")
