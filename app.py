@@ -589,9 +589,10 @@ def main():
   )
   st.plotly_chart(fig_comp, use_container_width=True)
 
-  # --- RANKING TOP 5 PVS POR CLIENTE ---
+  # --- RANKING TOP 5 PVS POR CLIENTE (COM CONTROLE DE DIA x ACUMULADO) ---
   st.divider()
   st.subheader("🏆 Top 5 Clientes por Pedidos de Venda (PVs Produzidos)")
+
   if (
       df_prod_bruto is not None
       and "CLIENTE" in df_prod_bruto.columns
@@ -604,50 +605,67 @@ def main():
     df_pb_cliente["DATA_STR"] = pd.to_datetime(
         df_pb_cliente[col_pb_dt], errors="coerce"
     ).dt.strftime("%Y-%m-%d")
-
     datas_p_disp = sorted(df_pb_cliente["DATA_STR"].dropna().unique())
-    if datas_p_disp:
-      data_p_sel = st.selectbox(
-          "Selecione a Data para visualizar o Top 5 PVs:",
-          datas_p_disp,
-          index=len(datas_p_disp) - 1,
-          key="sel_top5_pv",
+
+    col_m_pv, col_d_pv = st.columns([2, 2])
+    with col_m_pv:
+      modo_top5_pv = st.radio(
+          "Modo de Exibição do Top 5 PVs:",
+          ["Por Dia Selecionado", "Acumulado do Período Geral"],
+          horizontal=True,
+          key="modo_top5_pv",
       )
 
-      df_top_dia = df_pb_cliente[df_pb_cliente["DATA_STR"] == data_p_sel]
-      df_ranking_pv = (
-          df_top_dia.groupby("CLIENTE")["PV"]
-          .nunique()
-          .reset_index(name="Qtd_PVs")
-          .sort_values("Qtd_PVs", ascending=False)
-          .head(5)
+    if modo_top5_pv == "Por Dia Selecionado":
+      with col_d_pv:
+        data_p_sel = st.selectbox(
+            "Selecione a Data para visualizar o Top 5 PVs:",
+            datas_p_disp,
+            index=len(datas_p_disp) - 1,
+            key="sel_top5_pv_date",
+        )
+      df_top5_pv_filtrado = df_pb_cliente[
+          df_pb_cliente["DATA_STR"] == data_p_sel
+      ]
+      titulo_top5_pv = f"Top 5 Clientes por PVs no Dia: {data_p_sel}"
+    else:
+      df_top5_pv_filtrado = df_pb_cliente
+      titulo_top5_pv = "Top 5 Clientes por PVs Acumulado no Período"
+
+    df_ranking_pv = (
+        df_top5_pv_filtrado.groupby("CLIENTE")["PV"]
+        .nunique()
+        .reset_index(name="Qtd_PVs")
+        .sort_values("Qtd_PVs", ascending=False)
+        .head(5)
+    )
+    df_ranking_pv = df_ranking_pv.sort_values("Qtd_PVs", ascending=True)
+
+    if not df_ranking_pv.empty:
+      fig_top_pv = go.Figure()
+      fig_top_pv.add_trace(
+          go.Bar(
+              y=df_ranking_pv["CLIENTE"],
+              x=df_ranking_pv["Qtd_PVs"],
+              orientation="h",
+              marker=dict(color="#3a86ff", line=dict(color="#000000", width=1)),
+              text=[f"<b>{int(v)} PVs</b>" for v in df_ranking_pv["Qtd_PVs"]],
+              textfont=dict(color="#ffffff", size=12),
+              textposition="auto",
+          )
       )
-      df_ranking_pv = df_ranking_pv.sort_values("Qtd_PVs", ascending=True)
+      fig_top_pv.update_layout(**layout_graficos)
+      fig_top_pv.update_layout(
+          title=dict(text=f"<b>{titulo_top5_pv}</b>"),
+          xaxis=dict(title="<b>Qtd. Pedidos de Venda (PV)</b>"),
+          yaxis=dict(title="<b>Cliente</b>"),
+          margin=dict(l=180, r=40, t=50, b=40),
+      )
+      st.plotly_chart(fig_top_pv, use_container_width=True)
+    else:
+      st.info("Sem lançamentos de PVs para o filtro selecionado.")
 
-      if not df_ranking_pv.empty:
-        fig_top_pv = go.Figure()
-        fig_top_pv.add_trace(
-            go.Bar(
-                y=df_ranking_pv["CLIENTE"],
-                x=df_ranking_pv["Qtd_PVs"],
-                orientation="h",
-                marker=dict(
-                    color="#3a86ff", line=dict(color="#000000", width=1)
-                ),
-                text=[f"<b>{int(v)} PVs</b>" for v in df_ranking_pv["Qtd_PVs"]],
-                textfont=dict(color="#ffffff", size=12),
-                textposition="auto",
-            )
-        )
-        fig_top_pv.update_layout(**layout_graficos)
-        fig_top_pv.update_layout(
-            xaxis=dict(title="<b>Qtd. Pedidos de Venda (PV)</b>"),
-            yaxis=dict(title="<b>Cliente</b>"),
-            margin=dict(l=180, r=40, t=30, b=40),
-        )
-        st.plotly_chart(fig_top_pv, use_container_width=True)
-
-  # --- RANKING TOP 10 FATURAMENTO MONETÁRIO (COM CONTROLES PRÓPRIOS) ---
+  # --- RANKING TOP 10 FATURAMENTO MONETÁRIO ---
   st.divider()
   st.subheader("💎 Ranking Top 10 Clientes por Faturamento Monetário (R$)")
 
