@@ -14,6 +14,14 @@ st.set_page_config(
     layout="wide",
 )
 
+# Importação condicional do cryptography
+try:
+  from cryptography.fernet import Fernet
+
+  HAS_CRYPTO = True
+except ImportError:
+  HAS_CRYPTO = False
+
 
 # ==========================================
 # 1. GERENCIADOR DE SEGURANÇA E CRIPTOGRAFIA
@@ -25,7 +33,7 @@ class DataSecurityManager:
   def load_encrypted_excel(
       encrypted_path: str, key: bytes, sheet_name=0
   ) -> pd.DataFrame:
-    if not os.path.exists(encrypted_path):
+    if not HAS_CRYPTO or not os.path.exists(encrypted_path):
       return None
     f = Fernet(key)
     with open(encrypted_path, "rb") as file:
