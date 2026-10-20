@@ -45,7 +45,7 @@ class DataSecurityManager:
 # 2. CARREGAMENTO SEMIAUTOMÁTICO (BACK-END)
 # ==========================================
 class DataLoader:
-  """Lê as novas planilhas diretamente do diretório back-end ./data/ ou da raiz."""
+  """Lê as planilhas diretamente do diretório back-end ./data/ ou da raiz."""
 
   DATA_DIR = "./data/"
 
@@ -251,12 +251,11 @@ def main():
   df_r["DATA"] = pd.to_datetime(df_r[col_r_data], errors="coerce")
   df_r.rename(columns={col_r_qtd: "Total_Expedidos"}, inplace=True)
 
-  # Merge exclusivo da série operacional
   df_diario = pd.merge(
       df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
   ).fillna(0)
 
-  # --- TRATAMENTO DE FATURAMENTO ---
+  # --- TRATAMENTO COMPLETO DE FATURAMENTO ---
   if df_fat_detalhado is not None:
     df_fd_calc = df_fat_detalhado.copy()
 
@@ -296,11 +295,121 @@ def main():
         0
     )
   else:
+    df_fat_diario = pd.DataFrame(columns=["DATA", "Valor_Faturado"])
     df_diario["Valor_Faturado"] = 0.0
 
   df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
-  # --- SELEÇÃO TEMPORAL GERAL (CALENDÁRIO / MÊS / SEMANA) ---
+  # Layout padrão Plotly
+  layout_graficos = dict(
+      template="plotly_white",
+      plot_bgcolor="rgba(0,0,0,0)",
+      paper_bgcolor="rgba(0,0,0,0)",
+      font=dict(color="#000000", size=13, family="Arial"),
+      margin=dict(l=40, r=40, t=50, b=40),
+  )
+
+  # ==========================================
+  # PRIMEIRA PARTE: GRÁFICO ISOLADO DE FATURAMENTO
+  # ==========================================
+  st.subheader("💰 Faturamento Diário Total (Histórico Completo)")
+
+  if not df_fat_diario.empty:
+    df_fat_diario_plot = df_fat_diario.sort_values("DATA").copy()
+    df_fat_diario_plot["Data_Str"] = df_fat_diario_plot["DATA"].dt.strftime(
+        "%Y-%m-%d"
+    )
+
+    # Filtro temporal exclusivo para o faturamento
+    col_fat_f1, col_fat_f2 = st.columns([1.5, 3])
+
+    with col_fat_f1:
+      tipo_filtro_fat = st.radio(
+          "Filtrar Faturamento por:",
+          ["Período Completo", "Intervalo de Calendário", "Por Mês"],
+          horizontal=True,
+          key="filtro_fatur_exclusivo",
+      )
+
+    min_f_date = df_fat_diario_plot["DATA"].min().date()
+    max_f_date = df_fat_diario_plot["DATA"].max().date()
+
+    with col_fat_f2:
+      if tipo_filtro_fat == "Intervalo de Calendário":
+        d_fat_sel = st.date_input(
+            "Selecione o Intervalo de Faturamento:",
+            value=(min_f_date, max_f_date),
+            min_value=min_f_date,
+            max_value=max_f_date,
+            key="date_fat_input",
+        )
+        if isinstance(d_fat_sel, tuple) and len(d_fat_sel) == 2:
+          dt_fat_i, dt_fat_f = d_fat_sel
+        else:
+          dt_fat_i, dt_fat_f = min_f_date, max_f_date
+      elif tipo_filtro_fat == "Por Mês":
+        df_fat_diario_plot["Mes_Ano"] = df_fat_diario_plot["DATA"].dt.strftime(
+            "%Y-%m"
+        )
+        meses_fat = df_fat_diario_plot["Mes_Ano"].unique().tolist()
+        mes_fat_sel = st.selectbox(
+            "Selecione o Mês:",
+            meses_fat,
+            index=len(meses_fat) - 1,
+            key="mes_fat_sel",
+        )
+        dt_fat_i = (
+            df_fat_diario_plot[df_fat_diario_plot["Mes_Ano"] == mes_fat_sel][
+                "DATA"
+            ]
+            .min()
+            .date()
+        )
+        dt_fat_f = (
+            df_fat_diario_plot[df_fat_diario_plot["Mes_Ano"] == mes_fat_sel][
+                "DATA"
+            ]
+            .max()
+            .date()
+        )
+      else:
+        dt_fat_i, dt_fat_f = min_f_date, max_f_date
+
+    df_fat_exclusivo = df_fat_diario_plot[
+        (df_fat_diario_plot["DATA"].dt.date >= dt_fat_i)
+        & (df_fat_diario_plot["DATA"].dt.date <= dt_fat_f)
+    ].copy()
+
+    labels_fat_solo = [
+        f"<b>R$ {v:,.0f}</b>".replace(",", ".")
+        for v in df_fat_exclusivo["Valor_Faturado"]
+    ]
+
+    fig_fat_solo = go.Figure()
+    fig_fat_solo.add_trace(
+        go.Bar(
+            x=df_fat_exclusivo["Data_Str"],
+            y=df_fat_exclusivo["Valor_Faturado"],
+            name="Valor Faturado (R$)",
+            marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
+            text=labels_fat_solo,
+            textfont=dict(color="#000000", size=11),
+            textposition="outside",
+            cliponaxis=False,
+        )
+    )
+    fig_fat_solo.update_layout(**layout_graficos)
+    fig_fat_solo.update_layout(
+        yaxis=dict(title="<b>Valor Faturado (R$)</b>"),
+        xaxis=dict(title="<b>Data de Emissão</b>"),
+    )
+    st.plotly_chart(fig_fat_solo, use_container_width=True)
+  else:
+    st.info("Nenhum dado de faturamento encontrado.")
+
+  st.divider()
+
+  # --- SELEÇÃO TEMPORAL GERAL DA OPERAÇÃO ---
   st.subheader("📅 Filtro Temporal de Análise Operacional")
   col_ft1, col_ft2 = st.columns([1.5, 3])
 
@@ -428,14 +537,6 @@ def main():
       f"R$ {total_fat:,.2f}".replace(",", "X")
       .replace(".", ",")
       .replace("X", "."),
-  )
-
-  layout_graficos = dict(
-      template="plotly_white",
-      plot_bgcolor="rgba(0,0,0,0)",
-      paper_bgcolor="rgba(0,0,0,0)",
-      font=dict(color="#000000", size=13, family="Arial"),
-      margin=dict(l=40, r=40, t=50, b=40),
   )
 
   # --- GRÁFICO 1: PRODUÇÃO VS FATURAMENTO ---
@@ -589,7 +690,7 @@ def main():
   )
   st.plotly_chart(fig_comp, use_container_width=True)
 
-  # --- RANKING TOP 5 PVS POR CLIENTE (COM CONTROLE DE DIA x ACUMULADO) ---
+  # --- RANKING TOP 5 PVS POR CLIENTE ---
   st.divider()
   st.subheader("🏆 Top 5 Clientes por Pedidos de Venda (PVs Produzidos)")
 
