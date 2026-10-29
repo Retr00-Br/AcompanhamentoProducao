@@ -161,10 +161,14 @@ class DashboardUI:
 
 
 # ==========================================
-# 4. TRATAMENTO DE FATURAMENTO E DEVOLUÇÕES POR FILIAL
+# 4. TRATAMENTO DE FATURAMENTO E DEVOLUÇÕES (COLUNA J E FILIAIS)
 # ==========================================
 def parse_faturamento_filiais(df_raw):
-    """Extrai individualmente os valores de Faturamento (Fat.) e Devoluções (Dev.) por unidade."""
+    """
+    Trata a estrutura da planilha:
+    - Geral (Todas as Unidades): Faturamento extraído da Coluna J (index 9) e Devolução da Coluna K (index 10).
+    - Matriz e Filiais: Faturamento e Devolução extraídos somando seus respectivos campos.
+    """
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
@@ -188,9 +192,9 @@ def parse_faturamento_filiais(df_raw):
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
     
-    # Soma Geral
-    tot_fat = matriz_fat + rj_fat + cp_fat + sbc_fat
-    tot_dev = matriz_dev + rj_dev + cp_dev + sbc_dev
+    # Geral - Extraído diretamente da Coluna J (TOT / Index 9) e Coluna K (DEV / Index 10)
+    tot_geral_fat = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
+    tot_geral_dev = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
 
     df_fat = pd.DataFrame({
         "DATA": col_data,
@@ -202,8 +206,8 @@ def parse_faturamento_filiais(df_raw):
         "0103 - Filial CP_Dev": cp_dev,
         "0104 - Filial SBC_Fat": sbc_fat,
         "0104 - Filial SBC_Dev": sbc_dev,
-        "Todas as Unidades (Geral)_Fat": tot_fat,
-        "Todas as Unidades (Geral)_Dev": tot_dev,
+        "Todas as Unidades (Geral)_Fat": tot_geral_fat,
+        "Todas as Unidades (Geral)_Dev": tot_geral_dev,
     }).dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
 
     return df_fat
@@ -389,7 +393,7 @@ def main():
             use_container_width=True,
         )
 
-    # --- KPIs OPERACIONAIS GERAIS ---
+    # --- INDICADORES GERAIS DE PRODUÇÃO ---
     st.markdown("### 📊 Indicadores Gerais de Produção")
     k1, k2, k3, k4 = st.columns(4)
     total_pvs = int(df_filtrado["Total_PVs"].sum())
@@ -429,15 +433,15 @@ def main():
     fat_total_exclusivo = df_filtrado[col_fat_ativa].sum() if col_fat_ativa in df_filtrado.columns else 0.0
     dev_total_exclusivo = df_filtrado[col_dev_ativa].sum() if col_dev_ativa in df_filtrado.columns else 0.0
 
-    # --- KPIS DE FATURAMENTO E DEVOLUÇÕES POSICIONADOS DIRETAMENTE ACIMA DO GRÁFICO ---
-    st.markdown(f"### 💰 Faturamento & Devoluções - {unidade_selecionada}")
-    kf1, kf2, kf3, kf4 = st.columns(4)
-    
     dias_com_fat = len(df_filtrado[df_filtrado[col_fat_ativa] > 0])
     divisor_dias = dias_com_fat if dias_com_fat > 0 else 1
     media_fat_diaria = fat_total_exclusivo / divisor_dias
     media_dev_diaria = dev_total_exclusivo / divisor_dias
 
+    # --- KPIS DE FATURAMENTO E DEVOLUÇÃO UNIFICADOS DIRETAMENTE ACIMA DO GRÁFICO ---
+    st.markdown(f"### 💰 Faturamento & Devoluções ({unidade_selecionada})")
+    kf1, kf2, kf3, kf4 = st.columns(4)
+    
     kf1.metric(
         f"💵 Faturamento Total ({unidade_selecionada})",
         f"R$ {fat_total_exclusivo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
@@ -455,11 +459,10 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO ISOLADO DE FATURAMENTO BRUTO VS DEVOLUÇÕES ---
+    # --- GRÁFICO ISOLADO DE FATURAMENTO VS DEVOLUÇÕES ---
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
         
-        # Série de Faturamento
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
@@ -473,7 +476,6 @@ def main():
             )
         )
         
-        # Série de Devoluções ao Lado
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
@@ -498,7 +500,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (ACIMA DO GRÁFICO DE PRODUÇÃO VS FAT)
+    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (POSICIONADOS ACIMA DO GRÁFICO PV VS FAT)
     # ==========================================
     st.markdown("### 🎯 Médias Diárias do Período & Modelos Preditivos")
     
