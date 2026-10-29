@@ -129,6 +129,7 @@ class DashboardUI:
             }
             [data-testid="stMetricLabel"] { color: #000000 !important; font-weight: 700 !important; }
             [data-testid="stMetricValue"] { color: #000000 !important; font-weight: 800 !important; }
+            .brand-logo-text { font-size: 20px; font-weight: 900; color: #0077b6; text-align: center; }
             </style>
         """,
             unsafe_allow_html=True,
@@ -138,46 +139,62 @@ class DashboardUI:
         col_logo1, col_titulo, col_logo2 = st.columns([1.2, 3.6, 1.2])
         
         with col_logo1:
-            # Tenta carregar logo PNG transparente (logo.png ou images.jpg)
-            if os.path.exists("logo.png"):
-                st.image("logo.png", width=110)
+            # Tenta carregar logo MTC Log / Control Log
+            if os.path.exists("logo_control.png"):
+                st.image("logo_control.png", width=120)
+            elif os.path.exists("logo.png"):
+                st.image("logo.png", width=120)
             elif os.path.exists("images.jpg"):
-                st.image("images.jpg", width=110)
+                st.image("images.jpg", width=120)
             else:
-                st.write("Control Log")
+                st.markdown('<div class="brand-logo-text">CONTROL LOG</div>', unsafe_allow_html=True)
 
         with col_titulo:
             st.title("Dashboard de Produção, Expedição & BI")
             st.markdown("Monitoramento e consolidação de dados via **Back-End Seguro**.")
 
         with col_logo2:
-            # Tenta carregar logo2.png sem caixa branca em volta
-            if os.path.exists("logo2.png"):
-                st.image("logo2.png", width=130)
+            # Tenta carregar logo Master Higimed
+            if os.path.exists("logo_master.png"):
+                st.image("logo_master.png", width=140)
+            elif os.path.exists("master.png"):
+                st.image("master.png", width=140)
+            elif os.path.exists("logo2.png"):
+                st.image("logo2.png", width=140)
+            elif os.path.exists("higimed.png"):
+                st.image("higimed.png", width=140)
             else:
-                st.write("Higimed")
+                st.markdown('<div class="brand-logo-text">MASTER HIGIMED</div>', unsafe_allow_html=True)
                 
         st.divider()
 
 
 # ==========================================
-# 4. TRATAMENTO DE DADOS DE FATURAMENTO POR FILIAL
+# 4. TRATAMENTO DE DADOS DE FATURAMENTO BRUTO POR FILIAL
 # ==========================================
 def parse_faturamento_filiais(df_raw):
-    """Trata a estrutura multi-colunas da aba FaturamentoBruto."""
+    """Trata a estrutura multi-colunas da aba FaturamentoBruto (Extraindo estritamente Faturamento Bruto - Fat)."""
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
-    # Estrutura identificada:
-    # Linha 1 (índice 1): Datas na Coluna 1; Matriz Fat (Col 2); Filial RJ Fat (Col 4); Filial CP Fat (Col 6); Filial SBC Fat (Col 8); Total (Col 9)
-    df_data = df_raw.iloc[1:].copy()
+    # Estrutura identificada em FaturamentoBruto (header=None):
+    # Linha 1+:
+    # Index 1: Data de Emissão
+    # Index 2: 0101 - Matriz (Fat.)
+    # Index 4: 0102 - Filial RJ (Fat.)
+    # Index 6: 0103 - Filial CP (Fat.)
+    # Index 8: 0104 - Filial SBC (Fat.)
+    
+    df_data = df_raw.iloc[2:].copy()
     
     col_data = df_data.iloc[:, 1]
     col_matriz = pd.to_numeric(df_data.iloc[:, 2], errors="coerce").fillna(0)
     col_rj = pd.to_numeric(df_data.iloc[:, 4], errors="coerce").fillna(0)
     col_cp = pd.to_numeric(df_data.iloc[:, 6], errors="coerce").fillna(0)
     col_sbc = pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0)
-    col_tot = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0)
+    
+    # Soma exclusiva dos Faturamentos Brutos (Sem subtrair devoluções)
+    col_tot_bruto = col_matriz + col_rj + col_cp + col_sbc
 
     df_fat = pd.DataFrame({
         "DATA": pd.to_datetime(col_data, errors="coerce"),
@@ -185,7 +202,7 @@ def parse_faturamento_filiais(df_raw):
         "0102 - Filial RJ": col_rj,
         "0103 - Filial CP": col_cp,
         "0104 - Filial SBC": col_sbc,
-        "Todas as Unidades (Geral)": col_tot
+        "Todas as Unidades (Geral)": col_tot_bruto
     }).dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
 
     return df_fat
@@ -305,7 +322,7 @@ def main():
         df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
     ).fillna(0)
 
-    # --- ANEXA O FATURAMENTO DA UNIDADE SELECIONADA ---
+    # --- ANEXA O FATURAMENTO BRUTO DA UNIDADE SELECIONADA ---
     if not df_fat_unidades.empty and unidade_selecionada in df_fat_unidades.columns:
         df_fat_sub = df_fat_unidades[["DATA", unidade_selecionada]].rename(
             columns={unidade_selecionada: "Valor_Faturado"}
@@ -324,106 +341,6 @@ def main():
         font=dict(color="#000000", size=13, family="Arial"),
         margin=dict(l=40, r=40, t=50, b=40),
     )
-
-    # ==========================================
-    # PRIMEIRA PARTE: GRÁFICO ISOLADO DE FATURAMENTO
-    # ==========================================
-    st.subheader(f"💰 Faturamento Diário - {unidade_selecionada}")
-
-    if not df_diario.empty:
-        df_fat_diario_plot = df_diario[["DATA", "Valor_Faturado"]].copy()
-        df_fat_diario_plot["Data_Str"] = df_fat_diario_plot["DATA"].dt.strftime("%Y-%m-%d")
-
-        col_fat_f1, col_fat_f2 = st.columns([1.5, 3])
-
-        with col_fat_f1:
-            tipo_filtro_fat = st.radio(
-                "Filtrar Faturamento por:",
-                ["Período Completo", "Intervalo de Calendário", "Por Mês"],
-                horizontal=True,
-                key="filtro_fatur_exclusivo",
-            )
-
-        min_f_date = df_fat_diario_plot["DATA"].min().date()
-        max_f_date = df_fat_diario_plot["DATA"].max().date()
-
-        with col_fat_f2:
-            if tipo_filtro_fat == "Intervalo de Calendário":
-                d_fat_sel = st.date_input(
-                    "Selecione o Intervalo de Faturamento:",
-                    value=(min_f_date, max_f_date),
-                    min_value=min_f_date,
-                    max_value=max_f_date,
-                    key="date_fat_input",
-                )
-                if isinstance(d_fat_sel, tuple) and len(d_fat_sel) == 2:
-                    dt_fat_i, dt_fat_f = d_fat_sel
-                else:
-                    dt_fat_i, dt_fat_f = min_f_date, max_f_date
-            elif tipo_filtro_fat == "Por Mês":
-                df_fat_diario_plot["Mes_Ano"] = df_fat_diario_plot["DATA"].dt.strftime("%Y-%m")
-                meses_fat = df_fat_diario_plot["Mes_Ano"].unique().tolist()
-                mes_fat_sel = st.selectbox(
-                    "Selecione o Mês:",
-                    meses_fat,
-                    index=len(meses_fat) - 1,
-                    key="mes_fat_sel",
-                )
-                dt_fat_i = df_fat_diario_plot[df_fat_diario_plot["Mes_Ano"] == mes_fat_sel]["DATA"].min().date()
-                dt_fat_f = df_fat_diario_plot[df_fat_diario_plot["Mes_Ano"] == mes_fat_sel]["DATA"].max().date()
-            else:
-                dt_fat_i, dt_fat_f = min_f_date, max_f_date
-
-        df_fat_exclusivo = df_fat_diario_plot[
-            (df_fat_diario_plot["DATA"].dt.date >= dt_fat_i)
-            & (df_fat_diario_plot["DATA"].dt.date <= dt_fat_f)
-        ].copy()
-
-        labels_fat_solo = [
-            f"<b>R$ {v:,.0f}</b>".replace(",", ".")
-            for v in df_fat_exclusivo["Valor_Faturado"]
-        ]
-
-        fig_fat_solo = go.Figure()
-        fig_fat_solo.add_trace(
-            go.Bar(
-                x=df_fat_exclusivo["Data_Str"],
-                y=df_fat_exclusivo["Valor_Faturado"],
-                name=f"Faturamento ({unidade_selecionada})",
-                marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
-                text=labels_fat_solo,
-                textfont=dict(color="#000000", size=11),
-                textposition="outside",
-                cliponaxis=False,
-            )
-        )
-        fig_fat_solo.update_layout(**layout_graficos)
-        fig_fat_solo.update_layout(
-            yaxis=dict(title="<b>Valor Faturado (R$)</b>"),
-            xaxis=dict(title="<b>Data de Emissão</b>"),
-        )
-        st.plotly_chart(fig_fat_solo, use_container_width=True)
-
-        total_fat_bruto_periodo = df_fat_exclusivo["Valor_Faturado"].sum()
-        qtd_dias_faturados = len(df_fat_exclusivo[df_fat_exclusivo["Valor_Faturado"] > 0])
-        media_fat_diaria = (
-            total_fat_bruto_periodo / qtd_dias_faturados
-            if qtd_dias_faturados > 0
-            else 0.0
-        )
-
-        col_tf1, col_tf2, col_tf3 = st.columns(3)
-        col_tf1.metric(
-            f"💵 Total Faturado ({unidade_selecionada})",
-            f"R$ {total_fat_bruto_periodo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-        col_tf2.metric("📅 Dias com Faturamento", f"{qtd_dias_faturados} dias")
-        col_tf3.metric(
-            "📊 Média Diária Faturada",
-            f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-
-    st.divider()
 
     # --- SELEÇÃO TEMPORAL GERAL DA OPERAÇÃO ---
     st.subheader("📅 Filtro Temporal de Análise Operacional")
@@ -477,6 +394,66 @@ def main():
     ].copy()
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%Y-%m-%d")
 
+    # ==========================================
+    # NOVO LOCAL: MODELOS PREDITIVOS E MÉDIAS DIÁRIAS (TOPO)
+    # ==========================================
+    st.markdown("### 🎯 Médias Diárias do Período & Modelos Preditivos")
+    
+    if not df_filtrado.empty:
+        # Dias efetivos com operação
+        dias_com_fat = len(df_filtrado[df_filtrado["Valor_Faturado"] > 0])
+        dias_totais = len(df_filtrado)
+        divisor_dias = dias_com_fat if dias_com_fat > 0 else 1
+
+        media_saudavel = df_filtrado["SAUDAVEL"].mean()
+        media_backlog = df_filtrado["BACKLOG"].mean()
+        media_skus = df_filtrado["Total_SKUs"].mean()
+        media_fat_diaria = df_filtrado["Valor_Faturado"].sum() / divisor_dias
+
+        # Modelo Preditivo (Média Móvel Ponderada dos últimos 5 dias ativos)
+        df_recentes = df_filtrado.tail(5)
+        weights = np.linspace(1, 2, len(df_recentes)) if len(df_recentes) > 0 else [1]
+        weights /= weights.sum()
+
+        pred_saudavel = np.dot(df_recentes["SAUDAVEL"], weights) if len(df_recentes) > 0 else media_saudavel
+        pred_backlog = np.dot(df_recentes["BACKLOG"], weights) if len(df_recentes) > 0 else media_backlog
+        pred_skus = np.dot(df_recentes["Total_SKUs"], weights) if len(df_recentes) > 0 else media_skus
+        
+        # Conversão histórica de Produção -> Expedição
+        fator_expedicao = (
+            df_filtrado["Total_Expedidos"].sum() / df_filtrado["Total_PVs"].sum()
+            if df_filtrado["Total_PVs"].sum() > 0 else 1.0
+        )
+        expedicao_estimada_next = int((pred_saudavel + pred_backlog) * fator_expedicao)
+
+        pm1, pm2, pm3, pm4, pm5 = st.columns(5)
+        pm1.metric(
+            "📈 Média Saudável/Dia",
+            f"{media_saudavel:.1f}",
+            delta=f"{pred_saudavel - media_saudavel:+.1f} Projeção"
+        )
+        pm2.metric(
+            "⚠️ Média Backlog/Dia",
+            f"{media_backlog:.1f}",
+            delta=f"{pred_backlog - media_backlog:+.1f} Projeção",
+            delta_color="inverse"
+        )
+        pm3.metric(
+            "📦 Média SKUs/Dia",
+            f"{media_skus:.1f}",
+            delta=f"{pred_skus - media_skus:+.1f} Projeção"
+        )
+        pm4.metric(
+            "💵 Média Faturada/Dia",
+            f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            help="Soma do Faturamento Bruto dividido pelos dias de faturamento efetivo."
+        )
+        pm5.metric(
+            "🚚 Expedição Preditiva Estimada",
+            f"{expedicao_estimada_next} vol.",
+            help="Previsão automatizada para o próximo ciclo de entrega baseada em WMA."
+        )
+
     st.divider()
 
     # --- EXPORTAÇÃO DOS DADOS PARA EXCEL ---
@@ -500,19 +477,54 @@ def main():
     total_saudavel = int(df_filtrado["SAUDAVEL"].sum())
     total_backlog = int(df_filtrado["BACKLOG"].sum())
     total_skus = int(df_filtrado["Total_SKUs"].sum())
-    total_fat = df_filtrado["Valor_Faturado"].sum()
+    total_fat_bruto = df_filtrado["Valor_Faturado"].sum()
 
     k1.metric("📄 Total PVs", total_pvs)
     k2.metric("✅ Saudável", total_saudavel)
     k3.metric("⚠️ Backlog", total_backlog)
     k4.metric("📦 Total SKUs", total_skus)
     k5.metric(
-        "💰 Faturamento Total",
-        f"R$ {total_fat:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+        f"💵 Faturamento Bruto Total ({unidade_selecionada})",
+        f"R$ {total_fat_bruto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
+    # ==========================================
+    # GRÁFICO ISOLADO DE FATURAMENTO
+    # ==========================================
+    st.subheader(f"💰 Faturamento Bruto Diário - {unidade_selecionada}")
+
+    if not df_filtrado.empty:
+        df_fat_exclusivo = df_filtrado[["DATA", "Data_Str", "Valor_Faturado"]].copy()
+
+        labels_fat_solo = [
+            f"<b>R$ {v:,.0f}</b>".replace(",", ".")
+            for v in df_fat_exclusivo["Valor_Faturado"]
+        ]
+
+        fig_fat_solo = go.Figure()
+        fig_fat_solo.add_trace(
+            go.Bar(
+                x=df_fat_exclusivo["Data_Str"],
+                y=df_fat_exclusivo["Valor_Faturado"],
+                name=f"Faturamento Bruto ({unidade_selecionada})",
+                marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
+                text=labels_fat_solo,
+                textfont=dict(color="#000000", size=11),
+                textposition="outside",
+                cliponaxis=False,
+            )
+        )
+        fig_fat_solo.update_layout(**layout_graficos)
+        fig_fat_solo.update_layout(
+            yaxis=dict(title="<b>Valor Faturado Bruto (R$)</b>"),
+            xaxis=dict(title="<b>Data de Emissão</b>"),
+        )
+        st.plotly_chart(fig_fat_solo, use_container_width=True)
+
+    st.divider()
+
     # --- GRÁFICO 1: PRODUÇÃO VS FATURAMENTO ---
-    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
+    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento Bruto ({unidade_selecionada})")
     fig_fat = go.Figure()
     fig_fat.add_trace(
         go.Bar(
@@ -529,7 +541,7 @@ def main():
         go.Scatter(
             x=df_filtrado["Data_Str"],
             y=df_filtrado["Valor_Faturado"],
-            name="Faturamento",
+            name="Faturamento Bruto",
             mode="lines+markers+text",
             text=[f"<b>R$ {v:,.0f}</b>".replace(",", ".") for v in df_filtrado["Valor_Faturado"]],
             textfont=dict(color="#000000", size=12),
@@ -543,7 +555,7 @@ def main():
     fig_fat.update_layout(
         yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>"),
         yaxis2=dict(
-            title="<b>Valor Faturado (R$)</b>",
+            title="<b>Valor Faturado Bruto (R$)</b>",
             overlaying="y",
             side="right",
             showgrid=False,
@@ -812,58 +824,6 @@ def main():
             st.plotly_chart(fig_top10, use_container_width=True)
         else:
             st.info("Sem dados de faturamento para o filtro selecionado.")
-
-    # --- KPIS PREDITIVOS (ESTATÍSTICAS E ESTIMATIVAS) ---
-    st.divider()
-    st.subheader("🎯 KPIs Preditivos & Projeções de Desempenho")
-
-    if not df_filtrado.empty:
-        # Cálculo das médias e índices baseados nos últimos registros do período selecionado
-        ultimos_dias = df_filtrado.tail(5) if len(df_filtrado) >= 5 else df_filtrado
-
-        media_saudavel = df_filtrado["SAUDAVEL"].mean()
-        media_backlog = df_filtrado["BACKLOG"].mean()
-        media_skus = df_filtrado["Total_SKUs"].mean()
-        media_fat_diaria = df_filtrado["Valor_Faturado"].mean()
-        
-        # Fator de conversão médio entre (Saudável + Backlog) e Expedição
-        fator_conversao = (
-            df_filtrado["Total_Expedidos"].sum() / (df_filtrado["SAUDAVEL"].sum() + df_filtrado["BACKLOG"].sum())
-            if (df_filtrado["SAUDAVEL"].sum() + df_filtrado["BACKLOG"].sum()) > 0
-            else 1.0
-        )
-        
-        # Previsão da expedição do próximo ciclo
-        prev_saudavel_tendencia = ultimos_dias["SAUDAVEL"].mean()
-        prev_backlog_tendencia = ultimos_dias["BACKLOG"].mean()
-        expedicao_preditiva_estimada = int((prev_saudavel_tendencia + prev_backlog_tendencia) * fator_conversao)
-
-        p1, p2, p3, p4, p5 = st.columns(5)
-        
-        p1.metric(
-            "📈 Média Saudável/Dia",
-            f"{media_saudavel:.1f}",
-            delta=f"{prev_saudavel_tendencia - media_saudavel:+.1f} (Recente)"
-        )
-        p2.metric(
-            "⚠️ Média Backlog/Dia",
-            f"{media_backlog:.1f}",
-            delta=f"{prev_backlog_tendencia - media_backlog:+.1f} (Recente)",
-            delta_color="inverse"
-        )
-        p3.metric(
-            "📦 Média SKUs/Dia",
-            f"{media_skus:.1f}"
-        )
-        p4.metric(
-            "💵 Média Faturamento/Dia",
-            f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
-        p5.metric(
-            "🚚 Expedição Preditiva Estimada",
-            f"{expedicao_preditiva_estimada} romaneios",
-            help="Previsão baseada no índice de conversão da produção recente."
-        )
 
     # --- TABELA CONSOLIDADA DETALHADA ---
     with st.expander("🔍 Visualizar Tabela Consolidada"):
