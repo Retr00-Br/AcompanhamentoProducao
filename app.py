@@ -5,14 +5,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Tratamento seguro da biblioteca cryptography (evita ModuleNotFoundError)
+# Tratamento seguro da biblioteca cryptography
 try:
     from cryptography.fernet import Fernet
     HAS_CRYPTO = True
 except ImportError:
     HAS_CRYPTO = False
 
-# Configuração da página
 st.set_page_config(
     page_title="Dashboard Operacional & BI - Higimed",
     page_icon="📦",
@@ -24,8 +23,6 @@ st.set_page_config(
 # 1. GERENCIADOR DE SEGURANÇA E CRIPTOGRAFIA
 # ==========================================
 class DataSecurityManager:
-    """Gerencia a leitura segura de arquivos criptografados em memória no back-end."""
-
     @staticmethod
     def load_encrypted_excel(encrypted_path: str, key: bytes, sheet_name=0) -> pd.DataFrame:
         if not HAS_CRYPTO or not os.path.exists(encrypted_path):
@@ -41,8 +38,6 @@ class DataSecurityManager:
 # 2. CARREGAMENTO SEMIAUTOMÁTICO (BACK-END)
 # ==========================================
 class DataLoader:
-    """Lê as planilhas diretamente do diretório back-end ./data/ ou da raiz."""
-
     DATA_DIR = "./data/"
 
     def __init__(self, key: bytes = None):
@@ -52,14 +47,12 @@ class DataLoader:
         path = os.path.join(self.DATA_DIR, filename)
         enc_path = path + ".enc"
 
-        # 1. Tenta versão criptografada
         if self.key and os.path.exists(enc_path):
             try:
                 return DataSecurityManager.load_encrypted_excel(enc_path, self.key, sheet_name)
             except Exception:
                 pass
 
-        # 2. Leitura direta no diretório ./data/
         if os.path.exists(path):
             try:
                 return pd.read_excel(path, sheet_name=sheet_name, header=header)
@@ -69,7 +62,6 @@ class DataLoader:
                 except Exception:
                     return None
 
-        # 3. Fallback para a raiz do projeto
         if os.path.exists(filename):
             try:
                 return pd.read_excel(filename, sheet_name=sheet_name, header=header)
@@ -82,21 +74,17 @@ class DataLoader:
         return None
 
     def load_all_data(self):
-        # Produção
         df_prod_bruto = self.read_dataframe("DadosProducao.xlsx", "DadosBrutos")
         df_prod_tratado = self.read_dataframe("DadosProducao.xlsx", "LimpezaDados")
 
-        # Romaneios
         df_rom_tratado = self.read_dataframe("DadosRomaneios.xlsx", "DadosRomaneios")
         if df_rom_tratado is None:
             df_rom_tratado = self.read_dataframe("DadosRomaneios.xlsx", "Planilha1")
 
-        # Faturamento por cliente (Detalhamento)
         df_fat_detalhado = self.read_dataframe("DadosFaturamento.xlsx", "Faturamento por cliente")
         if df_fat_detalhado is None:
             df_fat_detalhado = self.read_dataframe("DadosFaturamento.xlsx", 0)
 
-        # Faturamento Bruto Diário com Filiais (Aba FaturamentoBruto)
         df_fat_bruto_raw = self.read_dataframe("DadosFaturamento.xlsx", "FaturamentoBruto", header=None)
 
         return (
@@ -112,7 +100,6 @@ class DataLoader:
 # 3. INTERFACE E RENDERIZAÇÃO (STREAMLIT)
 # ==========================================
 class DashboardUI:
-
     def __init__(self):
         self.setup_css()
 
@@ -139,7 +126,6 @@ class DashboardUI:
         col_logo1, col_titulo, col_logo2 = st.columns([1.2, 3.6, 1.2])
         
         with col_logo1:
-            # Tenta carregar logo MTC Log / Control Log
             if os.path.exists("logo_control.png"):
                 st.image("logo_control.png", width=120)
             elif os.path.exists("logo.png"):
@@ -154,7 +140,6 @@ class DashboardUI:
             st.markdown("Monitoramento e consolidação de dados via **Back-End Seguro**.")
 
         with col_logo2:
-            # Tenta carregar logo Master Higimed
             if os.path.exists("logo_master.png"):
                 st.image("logo_master.png", width=140)
             elif os.path.exists("master.png"):
@@ -170,26 +155,26 @@ class DashboardUI:
 
 
 # ==========================================
-# 4. TRATAMENTO DE DADOS DE FATURAMENTO BRUTO POR FILIAL
+# 4. TRATAMENTO DE DADOS DE FATURAMENTO BRUTO (APENAS FAT., SEM DEVOLUÇÕES)
 # ==========================================
 def parse_faturamento_filiais(df_raw):
-    """Trata a estrutura multi-colunas da aba FaturamentoBruto (Extraindo estritamente Faturamento Bruto - Fat)."""
+    """Extrai rigorosamente os campos de Faturamento Bruto (Fat.), ignorando devoluções (Dev.) e totais pré-descontados."""
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
     df_data = df_raw.iloc[2:].copy()
     
-    col_data = df_data.iloc[:, 1]
-    col_matriz = pd.to_numeric(df_data.iloc[:, 2], errors="coerce").fillna(0)
-    col_rj = pd.to_numeric(df_data.iloc[:, 4], errors="coerce").fillna(0)
-    col_cp = pd.to_numeric(df_data.iloc[:, 6], errors="coerce").fillna(0)
-    col_sbc = pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0)
+    col_data = pd.to_datetime(df_data.iloc[:, 1], errors="coerce")
+    col_matriz = pd.to_numeric(df_data.iloc[:, 2], errors="coerce").fillna(0)  # Coluna 2: 0101 - Matriz (Fat.)
+    col_rj = pd.to_numeric(df_data.iloc[:, 4], errors="coerce").fillna(0)      # Coluna 4: 0102 - Filial RJ (Fat.)
+    col_cp = pd.to_numeric(df_data.iloc[:, 6], errors="coerce").fillna(0)      # Coluna 6: 0103 - Filial CP (Fat.)
+    col_sbc = pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0)     # Coluna 8: 0104 - Filial SBC (Fat.)
     
-    # Soma exclusiva dos Faturamentos Brutos (Sem subtrair devoluções)
+    # Soma exclusiva dos campos "Fat." (Faturamento Bruto Puro)
     col_tot_bruto = col_matriz + col_rj + col_cp + col_sbc
 
     df_fat = pd.DataFrame({
-        "DATA": pd.to_datetime(col_data, errors="coerce"),
+        "DATA": col_data,
         "0101 - Matriz": col_matriz,
         "0102 - Filial RJ": col_rj,
         "0103 - Filial CP": col_cp,
@@ -226,7 +211,6 @@ def main():
         )
         st.stop()
 
-    # --- PROCESSAMENTO DO FATURAMENTO BRUTO POR FILIAIS ---
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
     # --- TRATAMENTO DE PRODUÇÃO ---
@@ -297,13 +281,11 @@ def main():
         df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
     ).fillna(0)
 
-    # Anexa todas as colunas de faturamento por unidade no dataframe diário
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="left").fillna(0)
 
     df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
-    # Layout padrão Plotly
     layout_graficos = dict(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -344,7 +326,7 @@ def main():
         elif tipo_filtro == "Por Mês":
             df_diario["Mes_Ano"] = df_diario["DATA"].dt.strftime("%Y-%m")
             meses = df_diario["Mes_Ano"].unique().tolist()
-            mes_sel = st.selectbox("Selecione a Mês:", meses, index=len(meses) - 1)
+            mes_sel = st.selectbox("Selecione o Mês:", meses, index=len(meses) - 1)
             dt_inicio = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].max().date()
 
@@ -383,7 +365,7 @@ def main():
             use_container_width=True,
         )
 
-    # --- SELETOR DE UNIDADE / FILIAL (APLICA-SE APENAS AO FATURAMENTO) ---
+    # --- SELETOR DE UNIDADE / FILIAL (FILTRO EXCLUSIVO DE FATURAMENTO) ---
     col_filial_sel, col_space_f = st.columns([2, 2])
     with col_filial_sel:
         opcoes_filiais = [
@@ -400,7 +382,6 @@ def main():
             key="seletor_unidade_filial_fatur"
         )
 
-    # Define a coluna de faturamento dinamicamente
     col_fat_ativa = unidade_selecionada if unidade_selecionada in df_filtrado.columns else "Todas as Unidades (Geral)"
     fat_total_exclusivo = df_filtrado[col_fat_ativa].sum() if col_fat_ativa in df_filtrado.columns else 0.0
 
@@ -454,7 +435,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (POSICIONADO ACIMA DO GRÁFICO PV VS FAT)
+    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (ACIMA DO GRÁFICO DE PRODUÇÃO VS FAT)
     # ==========================================
     st.markdown("### 🎯 Médias Diárias do Período & Modelos Preditivos")
     
@@ -467,7 +448,6 @@ def main():
         media_skus = df_filtrado["Total_SKUs"].mean()
         media_fat_diaria = df_filtrado[col_fat_ativa].sum() / divisor_dias
 
-        # Modelo Preditivo via Média Móvel Ponderada (WMA)
         df_recentes = df_filtrado.tail(5)
         weights = np.linspace(1, 2, len(df_recentes)) if len(df_recentes) > 0 else [1]
         weights /= weights.sum()
@@ -502,12 +482,12 @@ def main():
         pm4.metric(
             "💵 Média Faturada/Dia",
             f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-            help=f"Média calculada para a unidade selecionada ({unidade_selecionada})."
+            help=f"Média calculada exclusivamente pelas colunas de Faturamento Bruto (Fat.) da unidade: {unidade_selecionada}."
         )
         pm5.metric(
             "🚚 Expedição Preditiva Estimada",
             f"{expedicao_estimada_next} vol.",
-            help="Previsão automatizada para o próximo ciclo de entrega."
+            help="Previsão automatizada para o próximo ciclo baseada em WMA."
         )
 
     # --- GRÁFICO PRODUÇÃO VS FATURAMENTO BRUTO ---
@@ -729,7 +709,6 @@ def main():
     if df_fat_detalhado is not None:
         df_fd10 = df_fat_detalhado.copy()
 
-        # Filtrar por Filial no detalhamento caso não seja "Todas as Unidades (Geral)"
         if unidade_selecionada != "Todas as Unidades (Geral)" and "Filial" in df_fd10.columns:
             codigo_filial = int(unidade_selecionada.split(" - ")[0])
             df_fd10 = df_fd10[df_fd10["Filial"] == codigo_filial]
