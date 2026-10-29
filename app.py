@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Tratamento seguro da biblioteca cryptography
+# Tratamento seguro da biblioteca cryptography (evita ModuleNotFoundError)
 try:
     from cryptography.fernet import Fernet
     HAS_CRYPTO = True
@@ -498,7 +498,7 @@ def main():
             )
         )
 
-        # Configuração de Layout única para evitar o erro do Plotly
+        # Configuração de Layout unificada e 100% compatível com a API do Plotly no Python 3.14
         fig_fat_solo.update_layout(
             template="plotly_white",
             plot_bgcolor="rgba(0,0,0,0)",
@@ -508,20 +508,25 @@ def main():
             height=620,
             bargap=0.35,
             yaxis=dict(
-                title="<b>Valor Monetário (R$)</b>",
+                title=dict(text="<b>Valor Monetário (R$)</b>", font=dict(size=16)),
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
-                titlefont=dict(size=16),
                 tickfont=dict(size=14),
             ),
             xaxis=dict(
-                title="<b>Data (Dia/Mês)</b>",
+                title=dict(text="<b>Data (Dia/Mês)</b>", font=dict(size=16)),
                 type="category",
-                titlefont=dict(size=16),
                 tickfont=dict(size=14),
             ),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=14),
+            ),
         )
         st.plotly_chart(fig_fat_solo, use_container_width=True)
 
@@ -616,17 +621,29 @@ def main():
         font=dict(color="#000000", size=15, family="Arial"),
         margin=dict(l=65, r=65, t=75, b=85),
         height=620,
-        yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
+        yaxis=dict(
+            title=dict(text="<b>Qtd. Pedidos (PV)</b>", font=dict(size=16)),
+            tickfont=dict(size=14),
+        ),
         yaxis2=dict(
-            title="<b>Valor Faturado (R$)</b>",
+            title=dict(text="<b>Valor Faturado (R$)</b>", font=dict(size=16)),
             overlaying="y",
             side="right",
             showgrid=False,
-            titlefont=dict(size=16),
             tickfont=dict(size=14),
         ),
-        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
+        xaxis=dict(
+            type="category",
+            tickfont=dict(size=14),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=14),
+        ),
     )
     st.plotly_chart(fig_fat, use_container_width=True)
 
@@ -667,17 +684,29 @@ def main():
         font=dict(color="#000000", size=15, family="Arial"),
         margin=dict(l=65, r=65, t=75, b=85),
         height=620,
-        yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
+        yaxis=dict(
+            title=dict(text="<b>Qtd. Pedidos (PV)</b>", font=dict(size=16)),
+            tickfont=dict(size=14),
+        ),
         yaxis2=dict(
-            title="<b>Total SKUs</b>",
+            title=dict(text="<b>Total SKUs</b>", font=dict(size=16)),
             overlaying="y",
             side="right",
             showgrid=False,
-            titlefont=dict(size=16),
             tickfont=dict(size=14),
         ),
-        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
+        xaxis=dict(
+            type="category",
+            tickfont=dict(size=14),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=14),
+        ),
     )
     st.plotly_chart(fig_sku, use_container_width=True)
 
@@ -716,9 +745,22 @@ def main():
         margin=dict(l=65, r=65, t=75, b=85),
         height=620,
         barmode="stack",
-        yaxis=dict(title="<b>Quantidade de Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
-        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
+        yaxis=dict(
+            title=dict(text="<b>Quantidade de Pedidos (PV)</b>", font=dict(size=16)),
+            tickfont=dict(size=14),
+        ),
+        xaxis=dict(
+            type="category",
+            tickfont=dict(size=14),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=14),
+        ),
     )
     st.plotly_chart(fig_status, use_container_width=True)
 
@@ -757,9 +799,22 @@ def main():
         margin=dict(l=65, r=65, t=75, b=85),
         height=620,
         barmode="group",
-        yaxis=dict(title="<b>Quantidade</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
-        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
+        yaxis=dict(
+            title=dict(text="<b>Quantidade</b>", font=dict(size=16)),
+            tickfont=dict(size=14),
+        ),
+        xaxis=dict(
+            type="category",
+            tickfont=dict(size=14),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=14),
+        ),
     )
     st.plotly_chart(fig_comp, use_container_width=True)
 
@@ -831,8 +886,8 @@ def main():
                 font=dict(color="#000000", size=15, family="Arial"),
                 height=620,
                 title=dict(text=f"<b>{titulo_top5_pv}</b>"),
-                xaxis=dict(title="<b>Qtd. Pedidos de Venda (PV)</b>"),
-                yaxis=dict(title="<b>Cliente</b>"),
+                xaxis=dict(title=dict(text="<b>Qtd. Pedidos de Venda (PV)</b>", font=dict(size=15))),
+                yaxis=dict(title=dict(text="<b>Cliente</b>", font=dict(size=15))),
                 margin=dict(l=180, r=40, t=50, b=40),
             )
             st.plotly_chart(fig_top_pv, use_container_width=True)
@@ -924,8 +979,8 @@ def main():
                 font=dict(color="#000000", size=15, family="Arial"),
                 height=620,
                 title=dict(text=f"<b>{titulo_top10}</b>"),
-                xaxis=dict(title="<b>Valor Faturado (R$)</b>"),
-                yaxis=dict(title="<b>Cliente</b>"),
+                xaxis=dict(title=dict(text="<b>Valor Faturado (R$)</b>", font=dict(size=15))),
+                yaxis=dict(title=dict(text="<b>Cliente</b>", font=dict(size=15))),
                 margin=dict(l=180, r=40, t=50, b=40),
             )
             st.plotly_chart(fig_top10, use_container_width=True)
