@@ -161,19 +161,18 @@ class DashboardUI:
 
 
 # ==========================================
-# 4. TRATAMENTO RIGOROSO DO FATURAMENTO BRUTO E DEVOLUÇÕES
+# 4. TRATAMENTO EXTRAINDO EXCLUSIVAMENTE COLUNA J PARA O GERAL
 # ==========================================
 def parse_faturamento_filiais(df_raw):
     """
-    CÁLCULO BRUTO REAL (SEM SUBTRAIR DEVOLUÇÕES):
-    - Matriz: Coluna B (Fat. Bruto) e Coluna C (Devoluções)
-    - Filial RJ: Coluna D (Fat. Bruto) e Coluna E (Devoluções)
-    - Filial CP: Coluna F (Fat. Bruto) e Coluna G (Devoluções)
-    - Filial SBC: Coluna H (Fat. Bruto) e Coluna I (Devoluções)
-
+    EXTRAÇÃO DIRETA DAS COLUNAS SOLICITADAS:
     - Geral (Todas as Unidades): 
-      Fat. Bruto Real = Coluna B + Coluna D + Coluna F + Coluna H (Soma direta dos campos brutos)
-      Devoluções Real = Coluna C + Coluna E + Coluna G + Coluna I (Soma direta das devoluções)
+        Faturamento = Extraído DIRETAMENTE da Coluna J (index 9) -> Soma Total = R$ 9.789.630,45
+        Devoluções = Extraído DIRETAMENTE da Coluna K (index 10) -> Soma Total = R$ 380.392,39
+    - Matriz: Coluna B (Fat) e Coluna C (Dev)
+    - Filial RJ: Coluna D (Fat) e Coluna E (Dev)
+    - Filial CP: Coluna F (Fat) e Coluna G (Dev)
+    - Filial SBC: Coluna H (Fat) e Coluna I (Dev)
     """
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
@@ -198,9 +197,9 @@ def parse_faturamento_filiais(df_raw):
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
     
-    # SOMA DIRETA DOS BRUTOS (Total Geral Sem Subtrações)
-    tot_bruto_geral = matriz_fat + rj_fat + cp_fat + sbc_fat
-    tot_dev_geral = matriz_dev + rj_dev + cp_dev + sbc_dev
+    # GERAL -> EXTRAÇÃO PURA DA COLUNA J (idx 9) E COLUNA K (idx 10)
+    tot_col_j = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
+    dev_col_k = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
 
     df_fat = pd.DataFrame({
         "DATA": col_data,
@@ -212,8 +211,8 @@ def parse_faturamento_filiais(df_raw):
         "0103 - Filial CP_Dev": cp_dev,
         "0104 - Filial SBC_Fat": sbc_fat,
         "0104 - Filial SBC_Dev": sbc_dev,
-        "Todas as Unidades (Geral)_Fat": tot_bruto_geral,
-        "Todas as Unidades (Geral)_Dev": tot_dev_geral,
+        "Todas as Unidades (Geral)_Fat": tot_col_j,
+        "Todas as Unidades (Geral)_Dev": dev_col_k,
     }).dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
 
     return df_fat
@@ -328,7 +327,7 @@ def main():
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=13, family="Arial"),
         margin=dict(l=60, r=60, t=70, b=80),
-        height=600,
+        height=580,
     )
 
     # ==========================================
@@ -418,7 +417,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 2. SEÇÃO DE FATURAMENTO BRUTO E DEVOLUÇÕES (COM KPIS ACIMA DO GRÁFICO)
+    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES (COM KPIS ACIMA DO GRÁFICO COMBINADO)
     # ==========================================
     col_filial_sel, col_space_f = st.columns([2, 2])
     with col_filial_sel:
@@ -447,12 +446,14 @@ def main():
     media_fat_diaria = fat_total_exclusivo / divisor_dias
     media_dev_diaria = dev_total_exclusivo / divisor_dias
 
-    # --- KPIS DE FATURAMENTO BRUTO E DEVOLUÇÃO UNIFICADOS DIRETAMENTE ACIMA DO GRÁFICO ---
-    st.markdown(f"### 💰 Faturamento Bruto & Devoluções ({unidade_selecionada})")
+    # --- KPIS UNIFICADOS DIRETAMENTE ACIMA DO GRÁFICO ---
+    st.markdown(f"### 💰 Faturamento & Devoluções ({unidade_selecionada})")
     kf1, kf2, kf3, kf4 = st.columns(4)
     
+    label_fat = "Faturamento Total (Coluna J)" if unidade_selecionada == "Todas as Unidades (Geral)" else f"Faturamento Total ({unidade_selecionada})"
+    
     kf1.metric(
-        f"💵 Faturamento Bruto Total ({unidade_selecionada})",
+        f"💵 {label_fat}",
         f"R$ {fat_total_exclusivo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
     kf2.metric(
@@ -460,7 +461,7 @@ def main():
         f"R$ {dev_total_exclusivo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
     kf3.metric(
-        "📊 Média Faturada Bruta/Dia",
+        "📊 Média Faturada/Dia",
         f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
     kf4.metric(
@@ -468,11 +469,10 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO OTIMIZADO DE FATURAMENTO BRUTO VS DEVOLUÇÕES ---
+    # --- NOVO MODELO DE GRÁFICO: COMBINADO (BARRAS BEM LARGAS PARA FATURAMENTO + LINHA DE TENDÊNCIA COM PONTOS DESTACADOS PARA DEVOLUÇÕES) ---
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
 
-        # Função auxiliar para formatar os rótulos de forma legível
         def fmt_brl(val):
             if val >= 1_000_000:
                 return f"<b>R$ {val/1_000_000:.2f}M</b>".replace(".", ",")
@@ -483,14 +483,14 @@ def main():
             return ""
 
         labels_fat = [fmt_brl(v) for v in df_filtrado[col_fat_ativa]]
-        labels_dev = [fmt_brl(v) for v in df_filtrado[col_dev_ativa]]
+        labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado[col_dev_ativa]]
 
-        # Série Faturamento Bruto
+        # Barras Largas do Faturamento
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
                 y=df_filtrado[col_fat_ativa],
-                name="Faturamento Bruto (R$)",
+                name="Faturamento (R$)",
                 marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1.2)),
                 text=labels_fat,
                 textfont=dict(color="#000000", size=11),
@@ -499,25 +499,25 @@ def main():
             )
         )
 
-        # Série Devoluções
+        # Linha + Marcadores de Devolução (Fácil Leitura sem poluição)
         fig_fat_solo.add_trace(
-            go.Bar(
+            go.Scatter(
                 x=df_filtrado["Data_Str"],
                 y=df_filtrado[col_dev_ativa],
                 name="Devoluções (R$)",
-                marker=dict(color="#e63946", line=dict(color="#000000", width=1.2)),
+                mode="lines+markers+text",
+                marker=dict(color="#e63946", size=10, symbol="circle"),
+                line=dict(color="#e63946", width=3),
                 text=labels_dev,
                 textfont=dict(color="#e63946", size=11),
-                textposition="outside",
+                textposition="top center",
                 cliponaxis=False,
             )
         )
 
         fig_fat_solo.update_layout(**layout_graficos)
         fig_fat_solo.update_layout(
-            barmode="group",
-            bargap=0.25,
-            bargroupgap=0.08,
+            bargap=0.35,
             yaxis=dict(
                 title="<b>Valor Monetário (R$)</b>",
                 tickprefix="R$ ",
@@ -583,8 +583,8 @@ def main():
             help="Previsão automatizada para o próximo ciclo."
         )
 
-    # --- GRÁFICO PRODUÇÃO VS FATURAMENTO BRUTO ---
-    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento Bruto ({unidade_selecionada})")
+    # --- GRÁFICO PRODUÇÃO VS FATURAMENTO ---
+    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
     fig_fat = go.Figure()
     fig_fat.add_trace(
         go.Bar(
@@ -601,7 +601,7 @@ def main():
         go.Scatter(
             x=df_filtrado["Data_Str"],
             y=df_filtrado[col_fat_ativa],
-            name="Faturamento Bruto",
+            name="Faturamento",
             mode="lines+markers+text",
             text=[fmt_brl(v) for v in df_filtrado[col_fat_ativa]],
             textfont=dict(color="#000000", size=11),
@@ -615,7 +615,7 @@ def main():
     fig_fat.update_layout(
         yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>"),
         yaxis2=dict(
-            title="<b>Valor Faturado Bruto (R$)</b>",
+            title="<b>Valor Faturado (R$)</b>",
             overlaying="y",
             side="right",
             showgrid=False,
