@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Tratamento seguro da biblioteca cryptography (evita ModuleNotFoundError)
+# Tratamento seguro da biblioteca cryptography
 try:
     from cryptography.fernet import Fernet
     HAS_CRYPTO = True
@@ -161,43 +161,32 @@ class DashboardUI:
 
 
 # ==========================================
-# 4. TRATAMENTO EXTRAINDO EXCLUSIVAMENTE COLUNA J PARA O GERAL
+# 4. TRATAMENTO DE FATURAMENTO POR FILIAL
 # ==========================================
 def parse_faturamento_filiais(df_raw):
-    """
-    EXTRAÇÃO DIRETA DAS COLUNAS SOLICITADAS:
-    - Geral (Todas as Unidades): 
-        Faturamento = Extraído DIRETAMENTE da Coluna J (index 9) -> Soma Total = R$ 9.789.630,45
-        Devoluções = Extraído DIRETAMENTE da Coluna K (index 10) -> Soma Total = R$ 380.392,39
-    - Matriz: Coluna B (Fat) e Coluna C (Dev)
-    - Filial RJ: Coluna D (Fat) e Coluna E (Dev)
-    - Filial CP: Coluna F (Fat) e Coluna G (Dev)
-    - Filial SBC: Coluna H (Fat) e Coluna I (Dev)
-    """
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
     df_data = df_raw.iloc[2:].copy()
-    
     col_data = pd.to_datetime(df_data.iloc[:, 0], errors="coerce")
     
-    # 0101 - Matriz (Colunas B e C)
+    # 0101 - Matriz
     matriz_fat = pd.to_numeric(df_data.iloc[:, 1], errors="coerce").fillna(0)
     matriz_dev = abs(pd.to_numeric(df_data.iloc[:, 2], errors="coerce").fillna(0))
     
-    # 0102 - Filial RJ (Colunas D e E)
+    # 0102 - Filial RJ
     rj_fat = pd.to_numeric(df_data.iloc[:, 3], errors="coerce").fillna(0)
     rj_dev = abs(pd.to_numeric(df_data.iloc[:, 4], errors="coerce").fillna(0))
     
-    # 0103 - Filial CP (Colunas F e G)
+    # 0103 - Filial CP
     cp_fat = pd.to_numeric(df_data.iloc[:, 5], errors="coerce").fillna(0)
     cp_dev = abs(pd.to_numeric(df_data.iloc[:, 6], errors="coerce").fillna(0))
     
-    # 0104 - Filial SBC (Colunas H e I)
+    # 0104 - Filial SBC
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
     
-    # GERAL -> EXTRAÇÃO PURA DA COLUNA J (idx 9) E COLUNA K (idx 10)
+    # GERAL (Coluna J e K)
     tot_col_j = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
     dev_col_k = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
 
@@ -320,16 +309,6 @@ def main():
 
     df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
-    # Configuração de layout com fonte AUMENTADA para fácil leitura
-    layout_graficos = dict(
-        template="plotly_white",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=15, family="Arial"),
-        margin=dict(l=65, r=65, t=75, b=85),
-        height=620,
-    )
-
     # ==========================================
     # 1. SELEÇÃO TEMPORAL GERAL DA OPERAÇÃO
     # ==========================================
@@ -384,7 +363,7 @@ def main():
     ].copy()
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
-    # Identificar a menor data real de Produção/Romaneio (07/10/2026) para ocultar dias sem produção nos gráficos 3, 4, 5 e 6
+    # Identificar a menor data real de Produção/Romaneio (07/10/2026) para ocultar dias sem produção
     data_min_prod = df_p["DATA"].min()
     df_filtrado_prod = df_filtrado[df_filtrado["DATA"] >= data_min_prod].copy()
 
@@ -421,7 +400,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES (GRÁFICO 1 & KPIS)
+    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES
     # ==========================================
     col_filial_sel, col_space_f = st.columns([2, 2])
     with col_filial_sel:
@@ -450,11 +429,11 @@ def main():
     media_fat_diaria = fat_total_exclusivo / divisor_dias
     media_dev_diaria = dev_total_exclusivo / divisor_dias
 
-    # --- KPIS UNIFICADOS DIRETAMENTE ACIMA DO GRÁFICO ---
+    # KPIS UNIFICADOS - SEM A MENÇÃO DA COLUNA J
     st.markdown(f"### 💰 Faturamento & Devoluções ({unidade_selecionada})")
     kf1, kf2, kf3, kf4 = st.columns(4)
     
-    label_fat = "Faturamento Total (Coluna J)" if unidade_selecionada == "Todas as Unidades (Geral)" else f"Faturamento Total ({unidade_selecionada})"
+    label_fat = f"Faturamento Total ({unidade_selecionada})"
     
     kf1.metric(
         f"💵 {label_fat}",
@@ -473,7 +452,7 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (DEVOLUÇÃO EM PRETO #000000 E FONTE AUMENTADA) ---
+    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES ---
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
 
@@ -503,7 +482,7 @@ def main():
             )
         )
 
-        # Linha + Marcadores de Devolução PRETO (#000000)
+        # Linha de Devolução em PRETO (#000000)
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=df_filtrado["Data_Str"],
@@ -519,8 +498,14 @@ def main():
             )
         )
 
-        fig_fat_solo.update_layout(**layout_graficos)
+        # Configuração de Layout única para evitar o erro do Plotly
         fig_fat_solo.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#000000", size=15, family="Arial"),
+            margin=dict(l=65, r=65, t=75, b=85),
+            height=620,
             bargap=0.35,
             yaxis=dict(
                 title="<b>Valor Monetário (R$)</b>",
@@ -595,7 +580,7 @@ def main():
         )
 
     # ==========================================
-    # GRÁFICO 3: PRODUÇÃO DIÁRIA (PV) VS FATURAMENTO (APENAS A PARTIR DE 07/10)
+    # GRÁFICO 3: PRODUÇÃO DIÁRIA (PV) VS FATURAMENTO
     # ==========================================
     st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
     fig_fat = go.Figure()
@@ -624,8 +609,13 @@ def main():
             yaxis="y2",
         )
     )
-    fig_fat.update_layout(**layout_graficos)
     fig_fat.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=15, family="Arial"),
+        margin=dict(l=65, r=65, t=75, b=85),
+        height=620,
         yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
         yaxis2=dict(
             title="<b>Valor Faturado (R$)</b>",
@@ -641,7 +631,7 @@ def main():
     st.plotly_chart(fig_fat, use_container_width=True)
 
     # ==========================================
-    # GRÁFICO 4: PRODUÇÃO DIÁRIA (PV) VS SKUs (APENAS A PARTIR DE 07/10)
+    # GRÁFICO 4: PRODUÇÃO DIÁRIA (PV) VS SKUs
     # ==========================================
     st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs")
     fig_sku = go.Figure()
@@ -670,8 +660,13 @@ def main():
             yaxis="y2",
         )
     )
-    fig_sku.update_layout(**layout_graficos)
     fig_sku.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=15, family="Arial"),
+        margin=dict(l=65, r=65, t=75, b=85),
+        height=620,
         yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
         yaxis2=dict(
             title="<b>Total SKUs</b>",
@@ -687,7 +682,7 @@ def main():
     st.plotly_chart(fig_sku, use_container_width=True)
 
     # ==========================================
-    # GRÁFICO 5: SAUDÁVEL VS BACKLOG (APENAS A PARTIR DE 07/10)
+    # GRÁFICO 5: SAUDÁVEL VS BACKLOG
     # ==========================================
     st.subheader("📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
     fig_status = go.Figure()
@@ -713,8 +708,13 @@ def main():
             textposition="auto",
         )
     )
-    fig_status.update_layout(**layout_graficos)
     fig_status.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=15, family="Arial"),
+        margin=dict(l=65, r=65, t=75, b=85),
+        height=620,
         barmode="stack",
         yaxis=dict(title="<b>Quantidade de Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
         xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
@@ -723,7 +723,7 @@ def main():
     st.plotly_chart(fig_status, use_container_width=True)
 
     # ==========================================
-    # GRÁFICO 6: PRODUÇÃO VS EXPEDIÇÃO / ROMANEIOS (APENAS A PARTIR DE 07/10)
+    # GRÁFICO 6: PRODUÇÃO VS EXPEDIÇÃO / ROMANEIOS
     # ==========================================
     st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
     fig_comp = go.Figure()
@@ -749,8 +749,13 @@ def main():
             textposition="auto",
         )
     )
-    fig_comp.update_layout(**layout_graficos)
     fig_comp.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=15, family="Arial"),
+        margin=dict(l=65, r=65, t=75, b=85),
+        height=620,
         barmode="group",
         yaxis=dict(title="<b>Quantidade</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
         xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
@@ -819,8 +824,12 @@ def main():
                     textposition="auto",
                 )
             )
-            fig_top_pv.update_layout(**layout_graficos)
             fig_top_pv.update_layout(
+                template="plotly_white",
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#000000", size=15, family="Arial"),
+                height=620,
                 title=dict(text=f"<b>{titulo_top5_pv}</b>"),
                 xaxis=dict(title="<b>Qtd. Pedidos de Venda (PV)</b>"),
                 yaxis=dict(title="<b>Cliente</b>"),
@@ -908,8 +917,12 @@ def main():
                     textposition="auto",
                 )
             )
-            fig_top10.update_layout(**layout_graficos)
             fig_top10.update_layout(
+                template="plotly_white",
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#000000", size=15, family="Arial"),
+                height=620,
                 title=dict(text=f"<b>{titulo_top10}</b>"),
                 xaxis=dict(title="<b>Valor Faturado (R$)</b>"),
                 yaxis=dict(title="<b>Cliente</b>"),
