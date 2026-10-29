@@ -161,13 +161,26 @@ class DashboardUI:
 
 
 # ==========================================
-# 4. TRATAMENTO DE FATURAMENTO E DEVOLUÇÕES (COLUNA J E FILIAIS)
+# 4. TRATAMENTO DE FATURAMENTO E DEVOLUÇÕES (COLUNAS A ATÉ K)
 # ==========================================
 def parse_faturamento_filiais(df_raw):
     """
-    Trata a estrutura da planilha:
-    - Geral (Todas as Unidades): Faturamento extraído da Coluna J (index 9) e Devolução da Coluna K (index 10).
-    - Matriz e Filiais: Faturamento e Devolução extraídos somando seus respectivos campos.
+    Mapeamento de Colunas da Aba FaturamentoBruto:
+    - Coluna A (idx 0): Data
+    - Coluna B (idx 1): Matriz Fat
+    - Coluna C (idx 2): Matriz Dev
+    - Coluna D (idx 3): Filial RJ Fat
+    - Coluna E (idx 4): Filial RJ Dev
+    - Coluna F (idx 5): Filial CP Fat
+    - Coluna G (idx 6): Filial CP Dev
+    - Coluna H (idx 7): Filial SBC Fat
+    - Coluna I (idx 8): Filial SBC Dev
+    - Coluna J (idx 9): Total TOT (Faturamento Líquido no Excel)
+    - Coluna K (idx 10): Total DEV (Devoluções)
+
+    Recomposição:
+    Faturamento Bruto Geral = Coluna J + Coluna K (evitando que descontos venham aplicados no Faturamento)
+    Devolução Geral = Coluna K
     """
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
@@ -176,25 +189,29 @@ def parse_faturamento_filiais(df_raw):
     
     col_data = pd.to_datetime(df_data.iloc[:, 0], errors="coerce")
     
-    # 0101 - Matriz
+    # Matriz (Colunas B e C)
     matriz_fat = pd.to_numeric(df_data.iloc[:, 1], errors="coerce").fillna(0)
     matriz_dev = abs(pd.to_numeric(df_data.iloc[:, 2], errors="coerce").fillna(0))
     
-    # 0102 - Filial RJ
+    # Filial RJ (Colunas D e E)
     rj_fat = pd.to_numeric(df_data.iloc[:, 3], errors="coerce").fillna(0)
     rj_dev = abs(pd.to_numeric(df_data.iloc[:, 4], errors="coerce").fillna(0))
     
-    # 0103 - Filial CP
+    # Filial CP (Colunas F e G)
     cp_fat = pd.to_numeric(df_data.iloc[:, 5], errors="coerce").fillna(0)
     cp_dev = abs(pd.to_numeric(df_data.iloc[:, 6], errors="coerce").fillna(0))
     
-    # 0104 - Filial SBC
+    # Filial SBC (Colunas H e I)
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
     
-    # Geral - Extraído diretamente da Coluna J (TOT / Index 9) e Coluna K (DEV / Index 10)
-    tot_geral_fat = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
-    tot_geral_dev = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
+    # Total Geral (Colunas J e K)
+    col_j = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
+    col_k = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
+
+    # Recomposição do Faturamento Bruto Sem Misturar com Devolução
+    tot_geral_fat = col_j + col_k
+    tot_geral_dev = col_k
 
     df_fat = pd.DataFrame({
         "DATA": col_data,
@@ -314,12 +331,14 @@ def main():
 
     df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
+    # Configuração de layout para gráficos amplos e legíveis
     layout_graficos = dict(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=13, family="Arial"),
-        margin=dict(l=40, r=40, t=50, b=40),
+        margin=dict(l=50, r=50, t=60, b=60),
+        height=520,
     )
 
     # ==========================================
@@ -409,7 +428,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES (COM KPIS ACIMA DO GRÁFICO)
+    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES (COM SELETOR E KPIS DIRETAMENTE ACIMA DO GRÁFICO)
     # ==========================================
     col_filial_sel, col_space_f = st.columns([2, 2])
     with col_filial_sel:
@@ -438,8 +457,8 @@ def main():
     media_fat_diaria = fat_total_exclusivo / divisor_dias
     media_dev_diaria = dev_total_exclusivo / divisor_dias
 
-    # --- KPIS DE FATURAMENTO E DEVOLUÇÃO UNIFICADOS DIRETAMENTE ACIMA DO GRÁFICO ---
-    st.markdown(f"### 💰 Faturamento & Devoluções ({unidade_selecionada})")
+    # --- KPIS UNIFICADOS DE FATURAMENTO & DEVOLUÇÕES ACIMA DO GRÁFICO ---
+    st.markdown(f"### 💰 Faturamento Bruto & Devoluções ({unidade_selecionada})")
     kf1, kf2, kf3, kf4 = st.columns(4)
     
     kf1.metric(
@@ -459,23 +478,25 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO ISOLADO DE FATURAMENTO VS DEVOLUÇÕES ---
+    # --- GRÁFICO ISOLADO DE FATURAMENTO BRUTO VS DEVOLUÇÕES ---
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
         
+        # Série Faturamento Bruto
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
                 y=df_filtrado[col_fat_ativa],
                 name="Faturamento Bruto",
                 marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1)),
-                text=[f"<b>R$ {v:,.0f}</b>".replace(",", ".") for v in df_filtrado[col_fat_ativa]],
+                text=[f"<b>R$ {v:,.0f}</b>".replace(",", ".") if v > 0 else "" for v in df_filtrado[col_fat_ativa]],
                 textfont=dict(color="#000000", size=11),
                 textposition="outside",
                 cliponaxis=False,
             )
         )
         
+        # Série Devoluções
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
@@ -492,6 +513,8 @@ def main():
         fig_fat_solo.update_layout(**layout_graficos)
         fig_fat_solo.update_layout(
             barmode="group",
+            bargap=0.2,
+            bargroupgap=0.08,
             yaxis=dict(title="<b>Valor (R$)</b>"),
             xaxis=dict(title="<b>Data de Emissão</b>"),
         )
@@ -500,7 +523,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (POSICIONADOS ACIMA DO GRÁFICO PV VS FAT)
+    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (ACIMA DO GRÁFICO PRODUÇÃO VS FATURAMENTO)
     # ==========================================
     st.markdown("### 🎯 Médias Diárias do Período & Modelos Preditivos")
     
