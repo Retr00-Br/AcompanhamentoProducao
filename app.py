@@ -114,15 +114,15 @@ class DashboardUI:
             """
             <style>
             .main { background-color: #f8f9fa; color: #000000 !important; }
-            h1, h2, h3, h4, h5, h6 { color: #000000 !important; font-weight: 800 !important; }
-            p, span, label, div, .stMarkdown { color: #000000 !important; font-weight: 600; }
+            h1, h2, h3, h4, h5, h6 { color: #000000 !important; font-weight: 900 !important; }
+            p, span, label, div, .stMarkdown { color: #000000 !important; font-weight: 700; font-size: 16px !important; }
             [data-testid="stMetric"] {
-                background-color: #ffffff; padding: 18px; border-radius: 12px;
-                border: 2px solid #ced4da; box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+                background-color: #ffffff; padding: 20px; border-radius: 12px;
+                border: 2px solid #adb5bd; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
             }
-            [data-testid="stMetricLabel"] { color: #000000 !important; font-weight: 800 !important; font-size: 15px !important; }
-            [data-testid="stMetricValue"] { color: #000000 !important; font-weight: 900 !important; font-size: 26px !important; }
-            .brand-logo-text { font-size: 20px; font-weight: 900; color: #0077b6; text-align: center; }
+            [data-testid="stMetricLabel"] { color: #000000 !important; font-weight: 900 !important; font-size: 17px !important; }
+            [data-testid="stMetricValue"] { color: #000000 !important; font-weight: 900 !important; font-size: 30px !important; }
+            .brand-logo-text { font-size: 22px; font-weight: 900; color: #0077b6; text-align: center; }
             </style>
         """,
             unsafe_allow_html=True,
@@ -133,11 +133,11 @@ class DashboardUI:
         
         with col_logo1:
             if os.path.exists("logo_control.png"):
-                st.image("logo_control.png", width=120)
+                st.image("logo_control.png", width=130)
             elif os.path.exists("logo.png"):
-                st.image("logo.png", width=120)
+                st.image("logo.png", width=130)
             elif os.path.exists("images.jpg"):
-                st.image("images.jpg", width=120)
+                st.image("images.jpg", width=130)
             else:
                 st.markdown('<div class="brand-logo-text">CONTROL LOG</div>', unsafe_allow_html=True)
 
@@ -147,13 +147,13 @@ class DashboardUI:
 
         with col_logo2:
             if os.path.exists("logo_master.png"):
-                st.image("logo_master.png", width=140)
+                st.image("logo_master.png", width=150)
             elif os.path.exists("master.png"):
-                st.image("master.png", width=140)
+                st.image("master.png", width=150)
             elif os.path.exists("logo2.png"):
-                st.image("logo2.png", width=140)
+                st.image("logo2.png", width=150)
             elif os.path.exists("higimed.png"):
-                st.image("higimed.png", width=140)
+                st.image("higimed.png", width=150)
             else:
                 st.markdown('<div class="brand-logo-text">MASTER HIGIMED</div>', unsafe_allow_html=True)
                 
@@ -320,14 +320,14 @@ def main():
 
     df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
-    # Configuração de layout para alta resolução e legibilidade
+    # Configuração de layout com fonte AUMENTADA para fácil leitura
     layout_graficos = dict(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=13, family="Arial"),
-        margin=dict(l=60, r=60, t=70, b=80),
-        height=580,
+        font=dict(color="#000000", size=15, family="Arial"),
+        margin=dict(l=65, r=65, t=75, b=85),
+        height=620,
     )
 
     # ==========================================
@@ -384,6 +384,10 @@ def main():
     ].copy()
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
+    # Identificar a menor data real de Produção/Romaneio (07/10/2026) para ocultar dias sem produção nos gráficos 3, 4, 5 e 6
+    data_min_prod = df_p["DATA"].min()
+    df_filtrado_prod = df_filtrado[df_filtrado["DATA"] >= data_min_prod].copy()
+
     st.divider()
 
     # --- EXPORTAÇÃO DOS DADOS PARA EXCEL ---
@@ -417,7 +421,7 @@ def main():
     st.divider()
 
     # ==========================================
-    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES (COM KPIS ACIMA DO GRÁFICO COMBINADO)
+    # 2. SEÇÃO DE FATURAMENTO E DEVOLUÇÕES (GRÁFICO 1 & KPIS)
     # ==========================================
     col_filial_sel, col_space_f = st.columns([2, 2])
     with col_filial_sel:
@@ -469,7 +473,7 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- NOVO MODELO DE GRÁFICO: COMBINADO (BARRAS BEM LARGAS PARA FATURAMENTO + LINHA DE TENDÊNCIA COM PONTOS DESTACADOS PARA DEVOLUÇÕES) ---
+    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (DEVOLUÇÃO EM PRETO #000000 E FONTE AUMENTADA) ---
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
 
@@ -485,7 +489,7 @@ def main():
         labels_fat = [fmt_brl(v) for v in df_filtrado[col_fat_ativa]]
         labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado[col_dev_ativa]]
 
-        # Barras Largas do Faturamento
+        # Barras de Faturamento
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
@@ -493,23 +497,23 @@ def main():
                 name="Faturamento (R$)",
                 marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1.2)),
                 text=labels_fat,
-                textfont=dict(color="#000000", size=11),
+                textfont=dict(color="#000000", size=13),
                 textposition="outside",
                 cliponaxis=False,
             )
         )
 
-        # Linha + Marcadores de Devolução (Fácil Leitura sem poluição)
+        # Linha + Marcadores de Devolução PRETO (#000000)
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=df_filtrado["Data_Str"],
                 y=df_filtrado[col_dev_ativa],
                 name="Devoluções (R$)",
                 mode="lines+markers+text",
-                marker=dict(color="#e63946", size=10, symbol="circle"),
-                line=dict(color="#e63946", width=3),
+                marker=dict(color="#000000", size=11, symbol="circle"),
+                line=dict(color="#000000", width=3.5),
                 text=labels_dev,
-                textfont=dict(color="#e63946", size=11),
+                textfont=dict(color="#000000", size=13),
                 textposition="top center",
                 cliponaxis=False,
             )
@@ -523,16 +527,23 @@ def main():
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
+                titlefont=dict(size=16),
+                tickfont=dict(size=14),
             ),
-            xaxis=dict(title="<b>Data (Dia/Mês)</b>", type="category"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            xaxis=dict(
+                title="<b>Data (Dia/Mês)</b>",
+                type="category",
+                titlefont=dict(size=16),
+                tickfont=dict(size=14),
+            ),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
         )
         st.plotly_chart(fig_fat_solo, use_container_width=True)
 
     st.divider()
 
     # ==========================================
-    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS (ACIMA DO GRÁFICO PRODUÇÃO VS FATURAMENTO)
+    # 3. MÉDIAS DIÁRIAS DO PERÍODO & MODELOS PREDITIVOS
     # ==========================================
     st.markdown("### 🎯 Médias Diárias do Período & Modelos Preditivos")
     
@@ -583,151 +594,167 @@ def main():
             help="Previsão automatizada para o próximo ciclo."
         )
 
-    # --- GRÁFICO PRODUÇÃO VS FATURAMENTO ---
+    # ==========================================
+    # GRÁFICO 3: PRODUÇÃO DIÁRIA (PV) VS FATURAMENTO (APENAS A PARTIR DE 07/10)
+    # ==========================================
     st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
     fig_fat = go.Figure()
     fig_fat.add_trace(
         go.Bar(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["Total_PVs"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["Total_PVs"],
             name="PVs",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" for v in df_filtrado["Total_PVs"]],
-            textfont=dict(color="#ffffff", size=13),
+            text=[f"<b>{int(v)}</b>" for v in df_filtrado_prod["Total_PVs"]],
+            textfont=dict(color="#ffffff", size=14),
             textposition="auto",
         )
     )
     fig_fat.add_trace(
         go.Scatter(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado[col_fat_ativa],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod[col_fat_ativa],
             name="Faturamento",
             mode="lines+markers+text",
-            text=[fmt_brl(v) for v in df_filtrado[col_fat_ativa]],
-            textfont=dict(color="#000000", size=11),
+            text=[fmt_brl(v) for v in df_filtrado_prod[col_fat_ativa]],
+            textfont=dict(color="#000000", size=13),
             textposition="top center",
-            marker=dict(color="#2ec4b6", size=8),
-            line=dict(color="#2ec4b6", width=3),
+            marker=dict(color="#2ec4b6", size=9),
+            line=dict(color="#2ec4b6", width=3.5),
             yaxis="y2",
         )
     )
     fig_fat.update_layout(**layout_graficos)
     fig_fat.update_layout(
-        yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>"),
+        yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
         yaxis2=dict(
             title="<b>Valor Faturado (R$)</b>",
             overlaying="y",
             side="right",
             showgrid=False,
+            titlefont=dict(size=16),
+            tickfont=dict(size=14),
         ),
-        xaxis=dict(type="category"),
+        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
     )
     st.plotly_chart(fig_fat, use_container_width=True)
 
-    # --- GRÁFICO PRODUÇÃO VS SKUs ---
+    # ==========================================
+    # GRÁFICO 4: PRODUÇÃO DIÁRIA (PV) VS SKUs (APENAS A PARTIR DE 07/10)
+    # ==========================================
     st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs")
     fig_sku = go.Figure()
     fig_sku.add_trace(
         go.Bar(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["Total_PVs"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["Total_PVs"],
             name="PVs",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" for v in df_filtrado["Total_PVs"]],
-            textfont=dict(color="#ffffff", size=13),
+            text=[f"<b>{int(v)}</b>" for v in df_filtrado_prod["Total_PVs"]],
+            textfont=dict(color="#ffffff", size=14),
             textposition="auto",
         )
     )
     fig_sku.add_trace(
         go.Scatter(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["Total_SKUs"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["Total_SKUs"],
             name="SKUs",
             mode="lines+markers+text",
-            text=[f"<b>{int(v)}</b>" for v in df_filtrado["Total_SKUs"]],
-            textfont=dict(color="#000000", size=12),
+            text=[f"<b>{int(v)}</b>" for v in df_filtrado_prod["Total_SKUs"]],
+            textfont=dict(color="#000000", size=13),
             textposition="top center",
-            marker=dict(color="#d97706", size=8),
-            line=dict(color="#d97706", width=3),
+            marker=dict(color="#d97706", size=9),
+            line=dict(color="#d97706", width=3.5),
             yaxis="y2",
         )
     )
     fig_sku.update_layout(**layout_graficos)
     fig_sku.update_layout(
-        yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>"),
+        yaxis=dict(title="<b>Qtd. Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
         yaxis2=dict(
             title="<b>Total SKUs</b>",
             overlaying="y",
             side="right",
             showgrid=False,
+            titlefont=dict(size=16),
+            tickfont=dict(size=14),
         ),
-        xaxis=dict(type="category"),
+        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
     )
     st.plotly_chart(fig_sku, use_container_width=True)
 
-    # --- GRÁFICO SAUDÁVEL VS BACKLOG ---
+    # ==========================================
+    # GRÁFICO 5: SAUDÁVEL VS BACKLOG (APENAS A PARTIR DE 07/10)
+    # ==========================================
     st.subheader("📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
     fig_status = go.Figure()
     fig_status.add_trace(
         go.Bar(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["SAUDAVEL"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["SAUDAVEL"],
             name="Notas Saudáveis",
             marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado["SAUDAVEL"]],
-            textfont=dict(color="#ffffff", size=12),
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["SAUDAVEL"]],
+            textfont=dict(color="#ffffff", size=13),
             textposition="auto",
         )
     )
     fig_status.add_trace(
         go.Bar(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["BACKLOG"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["BACKLOG"],
             name="Backlog",
             marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado["BACKLOG"]],
-            textfont=dict(color="#ffffff", size=12),
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["BACKLOG"]],
+            textfont=dict(color="#ffffff", size=13),
             textposition="auto",
         )
     )
     fig_status.update_layout(**layout_graficos)
     fig_status.update_layout(
         barmode="stack",
-        yaxis=dict(title="<b>Quantidade de Pedidos (PV)</b>"),
-        xaxis=dict(type="category"),
+        yaxis=dict(title="<b>Quantidade de Pedidos (PV)</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
+        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
     )
     st.plotly_chart(fig_status, use_container_width=True)
 
-    # --- GRÁFICO PRODUÇÃO VS EXPEDIÇÃO (ROMANEIOS) ---
+    # ==========================================
+    # GRÁFICO 6: PRODUÇÃO VS EXPEDIÇÃO / ROMANEIOS (APENAS A PARTIR DE 07/10)
+    # ==========================================
     st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
     fig_comp = go.Figure()
     fig_comp.add_trace(
         go.Bar(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["Total_PVs"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["Total_PVs"],
             name="Produzidos no Dia",
             marker=dict(color="#0f9f90", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" for v in df_filtrado["Total_PVs"]],
-            textfont=dict(color="#ffffff", size=12),
+            text=[f"<b>{int(v)}</b>" for v in df_filtrado_prod["Total_PVs"]],
+            textfont=dict(color="#ffffff", size=13),
             textposition="auto",
         )
     )
     fig_comp.add_trace(
         go.Bar(
-            x=df_filtrado["Data_Str"],
-            y=df_filtrado["Total_Expedidos"],
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod["Total_Expedidos"],
             name="Expedidos no Dia (Romaneio)",
             marker=dict(color="#d9381e", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" for v in df_filtrado["Total_Expedidos"]],
-            textfont=dict(color="#ffffff", size=12),
+            text=[f"<b>{int(v)}</b>" for v in df_filtrado_prod["Total_Expedidos"]],
+            textfont=dict(color="#ffffff", size=13),
             textposition="auto",
         )
     )
     fig_comp.update_layout(**layout_graficos)
     fig_comp.update_layout(
         barmode="group",
-        yaxis=dict(title="<b>Quantidade</b>"),
-        xaxis=dict(type="category"),
+        yaxis=dict(title="<b>Quantidade</b>", titlefont=dict(size=16), tickfont=dict(size=14)),
+        xaxis=dict(type="category", titlefont=dict(size=16), tickfont=dict(size=14)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=14)),
     )
     st.plotly_chart(fig_comp, use_container_width=True)
 
@@ -788,7 +815,7 @@ def main():
                     orientation="h",
                     marker=dict(color="#3a86ff", line=dict(color="#000000", width=1)),
                     text=[f"<b>{int(v)} PVs</b>" for v in df_ranking_pv["Qtd_PVs"]],
-                    textfont=dict(color="#ffffff", size=12),
+                    textfont=dict(color="#ffffff", size=13),
                     textposition="auto",
                 )
             )
@@ -877,7 +904,7 @@ def main():
                         f"<b>R$ {v:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", ".")
                         for v in df_top10["Total_Faturado"]
                     ],
-                    textfont=dict(color="#ffffff", size=12),
+                    textfont=dict(color="#ffffff", size=13),
                     textposition="auto",
                 )
             )
