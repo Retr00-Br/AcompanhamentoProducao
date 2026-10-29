@@ -525,7 +525,7 @@ def main():
                 gridcolor="#e9ecef",
             ),
             xaxis=dict(title="<b>Data (Dia/Mês)</b>", type="category"),
-            legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
         st.plotly_chart(fig_fat_solo, use_container_width=True)
 
