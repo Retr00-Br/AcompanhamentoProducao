@@ -186,7 +186,7 @@ def parse_faturamento_filiais(df_raw):
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
     
-    # GERAL (Coluna J e K)
+    # GERAL
     tot_col_j = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
     dev_col_k = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
 
@@ -303,7 +303,7 @@ def main():
         df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
     ).fillna(0)
 
-    # Merge do Faturamento sem perdas de datas (Outer Join)
+    # Merge do Faturamento sem perdas de datas
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
@@ -363,7 +363,7 @@ def main():
     ].copy()
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
-    # Identificar a menor data real de Produção/Romaneio de forma segura
+    # Identificar a menor data real de Produção de forma 100% segura
     if "df_p" in locals() and df_p is not None and "DATA" in df_p.columns and not df_p["DATA"].dropna().empty:
         data_min_prod = df_p["DATA"].dropna().min()
         df_filtrado_prod = df_filtrado[df_filtrado["DATA"] >= data_min_prod].copy()
@@ -432,7 +432,6 @@ def main():
     media_fat_diaria = fat_total_exclusivo / divisor_dias
     media_dev_diaria = dev_total_exclusivo / divisor_dias
 
-    # KPIS UNIFICADOS
     st.markdown(f"### 💰 Faturamento & Devoluções ({unidade_selecionada})")
     kf1, kf2, kf3, kf4 = st.columns(4)
     
@@ -455,7 +454,7 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (MODELO PADRONIZADO E COM DUPLO EIXO) ---
+    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (VISUAL OTIMIZADO) ---
     if not df_filtrado_prod.empty:
         fig_fat_solo = go.Figure()
 
@@ -471,30 +470,34 @@ def main():
         labels_fat = [fmt_brl(v) for v in df_filtrado_prod[col_fat_ativa]]
         labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado_prod[col_dev_ativa]]
 
-        # Barras de Faturamento no modelo idêntico ao Gráfico 2 (Azul #0077b6 com texto centralizado dentro da barra)
+        max_fat = df_filtrado_prod[col_fat_ativa].max() if not df_filtrado_prod[col_fat_ativa].empty else 1000
+        max_dev = df_filtrado_prod[col_dev_ativa].max() if not df_filtrado_prod[col_dev_ativa].empty else 1000
+
+        # Barras de Faturamento com números ACIMA das colunas (outside) na horizontal
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado_prod["Data_Str"],
                 y=df_filtrado_prod[col_fat_ativa],
                 name="Faturamento (R$)",
-                marker=dict(color="#0077b6", line=dict(color="#000000", width=1.2)),
+                marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
                 text=labels_fat,
-                textfont=dict(color="#ffffff", size=13),
-                textposition="auto",
+                textfont=dict(color="#000000", size=12),
+                textposition="outside",
+                cliponaxis=False,
             )
         )
 
-        # Linha de Devolução em Eixo Secundário (y2) para destaque limpo e sem sobreposição
+        # Linha de Devolução fina (width=1.5) para não cobrir nem interferir nas barras
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=df_filtrado_prod["Data_Str"],
                 y=df_filtrado_prod[col_dev_ativa],
                 name="Devoluções (R$)",
                 mode="lines+markers+text",
-                marker=dict(color="#e63946", size=10, symbol="circle"),
-                line=dict(color="#e63946", width=3.5),
+                marker=dict(color="#d90429", size=5, symbol="circle"),
+                line=dict(color="#d90429", width=1.5),
                 text=labels_dev,
-                textfont=dict(color="#000000", size=12),
+                textfont=dict(color="#b7094c", size=11),
                 textposition="top center",
                 yaxis="y2",
                 cliponaxis=False,
@@ -505,36 +508,38 @@ def main():
             template="plotly_white",
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#000000", size=15, family="Arial"),
-            margin=dict(l=65, r=65, t=75, b=85),
-            height=620,
-            bargap=0.3,
+            font=dict(color="#000000", size=14, family="Arial"),
+            margin=dict(l=65, r=65, t=85, b=85),
+            height=640,
+            bargap=0.35,
             yaxis=dict(
-                title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=16)),
+                title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=15)),
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
-                tickfont=dict(size=14),
+                tickfont=dict(size=13),
+                range=[0, max_fat * 1.25] if max_fat > 0 else None,
             ),
             yaxis2=dict(
-                title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=16)),
+                title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=15)),
                 overlaying="y",
                 side="right",
                 showgrid=False,
-                tickfont=dict(size=14),
+                tickfont=dict(size=13),
+                range=[0, max_dev * 1.35] if max_dev > 0 else None,
             ),
             xaxis=dict(
-                title=dict(text="<b>Data (Dia/Mês)</b>", font=dict(size=16)),
+                title=dict(text="<b>Data (Dia/Mês)</b>", font=dict(size=15)),
                 type="category",
-                tickfont=dict(size=14),
+                tickfont=dict(size=13),
             ),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
-                y=1.02,
+                y=1.03,
                 xanchor="right",
                 x=1,
-                font=dict(size=14),
+                font=dict(size=13),
             ),
         )
         st.plotly_chart(fig_fat_solo, use_container_width=True)
