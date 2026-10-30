@@ -186,7 +186,7 @@ def parse_faturamento_filiais(df_raw):
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
     
-    # GERAL
+    # GERAL (Coluna J e K)
     tot_col_j = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
     dev_col_k = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
 
@@ -303,7 +303,7 @@ def main():
         df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer"
     ).fillna(0)
 
-    # Merge do Faturamento sem perdas de datas
+    # Merge do Faturamento sem perdas de datas (Outer Join)
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
@@ -363,7 +363,7 @@ def main():
     ].copy()
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
-    # Identificar a menor data real de Produção de forma 100% segura
+    # Identificar a menor data real de Produção para os gráficos específicos de fábrica
     if "df_p" in locals() and df_p is not None and "DATA" in df_p.columns and not df_p["DATA"].dropna().empty:
         data_min_prod = df_p["DATA"].dropna().min()
         df_filtrado_prod = df_filtrado[df_filtrado["DATA"] >= data_min_prod].copy()
@@ -454,8 +454,8 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (VISUAL OTIMIZADO) ---
-    if not df_filtrado_prod.empty:
+    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (EXIBE A PARTIR DO DIA 01 E SEM SOBREPOSIÇÃO) ---
+    if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
 
         def fmt_brl(val):
@@ -467,17 +467,17 @@ def main():
                 return f"<b>R$ {val:.0f}</b>"
             return ""
 
-        labels_fat = [fmt_brl(v) for v in df_filtrado_prod[col_fat_ativa]]
-        labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado_prod[col_dev_ativa]]
+        labels_fat = [fmt_brl(v) for v in df_filtrado[col_fat_ativa]]
+        labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado[col_dev_ativa]]
 
-        max_fat = df_filtrado_prod[col_fat_ativa].max() if not df_filtrado_prod[col_fat_ativa].empty else 1000
-        max_dev = df_filtrado_prod[col_dev_ativa].max() if not df_filtrado_prod[col_dev_ativa].empty else 1000
+        max_fat = df_filtrado[col_fat_ativa].max() if not df_filtrado[col_fat_ativa].empty else 1000
+        max_dev = df_filtrado[col_dev_ativa].max() if not df_filtrado[col_dev_ativa].empty else 1000
 
-        # Barras de Faturamento com números ACIMA das colunas (outside) na horizontal
+        # Barras de Faturamento com colunas mais largas (bargap=0.10) e texto no topo outside
         fig_fat_solo.add_trace(
             go.Bar(
-                x=df_filtrado_prod["Data_Str"],
-                y=df_filtrado_prod[col_fat_ativa],
+                x=df_filtrado["Data_Str"],
+                y=df_filtrado[col_fat_ativa],
                 name="Faturamento (R$)",
                 marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
                 text=labels_fat,
@@ -487,18 +487,18 @@ def main():
             )
         )
 
-        # Linha de Devolução com texto em PRETO e marcadores definidos de forma limpa
+        # Posicionamento inteligente para o texto de devoluções (bottom center abaixo do ponto para afastar da barra de faturamento)
         fig_fat_solo.add_trace(
             go.Scatter(
-                x=df_filtrado_prod["Data_Str"],
-                y=df_filtrado_prod[col_dev_ativa],
+                x=df_filtrado["Data_Str"],
+                y=df_filtrado[col_dev_ativa],
                 name="Devoluções (R$)",
                 mode="lines+markers+text",
                 marker=dict(color="#d90429", size=6, symbol="circle"),
                 line=dict(color="#d90429", width=1.8),
                 text=labels_dev,
-                textfont=dict(color="#000000", size=11),
-                textposition="top center",
+                textfont=dict(color="#a10011", size=11),
+                textposition="bottom center",
                 yaxis="y2",
                 cliponaxis=False,
             )
@@ -511,14 +511,14 @@ def main():
             font=dict(color="#000000", size=14, family="Arial"),
             margin=dict(l=65, r=65, t=85, b=85),
             height=640,
-            bargap=0.20,
+            bargap=0.10,
             yaxis=dict(
                 title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=15)),
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
                 tickfont=dict(size=13),
-                range=[0, max_fat * 1.22] if max_fat > 0 else None,
+                range=[0, max_fat * 1.25] if max_fat > 0 else None,
             ),
             yaxis2=dict(
                 title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=15)),
@@ -526,7 +526,7 @@ def main():
                 side="right",
                 showgrid=False,
                 tickfont=dict(size=13),
-                range=[0, max_dev * 1.35] if max_dev > 0 else None,
+                range=[0, max_dev * 1.40] if max_dev > 0 else None,
             ),
             xaxis=dict(
                 title=dict(text="<b>Data (Dia/Mês)</b>", font=dict(size=15)),
