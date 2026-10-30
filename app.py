@@ -487,17 +487,17 @@ def main():
             )
         )
 
-        # Linha de Devolução fina (width=1.5) para não cobrir nem interferir nas barras
+        # Linha de Devolução com texto em PRETO e marcadores definidos de forma limpa
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=df_filtrado_prod["Data_Str"],
                 y=df_filtrado_prod[col_dev_ativa],
                 name="Devoluções (R$)",
                 mode="lines+markers+text",
-                marker=dict(color="#d90429", size=5, symbol="circle"),
-                line=dict(color="#d90429", width=1.5),
+                marker=dict(color="#d90429", size=6, symbol="circle"),
+                line=dict(color="#d90429", width=1.8),
                 text=labels_dev,
-                textfont=dict(color="#b7094c", size=11),
+                textfont=dict(color="#000000", size=11),
                 textposition="top center",
                 yaxis="y2",
                 cliponaxis=False,
@@ -511,14 +511,14 @@ def main():
             font=dict(color="#000000", size=14, family="Arial"),
             margin=dict(l=65, r=65, t=85, b=85),
             height=640,
-            bargap=0.35,
+            bargap=0.20,
             yaxis=dict(
                 title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=15)),
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
                 tickfont=dict(size=13),
-                range=[0, max_fat * 1.25] if max_fat > 0 else None,
+                range=[0, max_fat * 1.22] if max_fat > 0 else None,
             ),
             yaxis2=dict(
                 title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=15)),
@@ -556,6 +556,13 @@ def main():
         media_backlog = df_filtrado["BACKLOG"].mean()
         media_skus = df_filtrado["Total_SKUs"].mean()
 
+        # Filtrar dias com atividade real de expedição
+        df_exp = df_filtrado[df_filtrado["Total_Expedidos"] > 0]
+        if df_exp.empty:
+            df_exp = df_filtrado
+
+        media_expedidos = df_exp["Total_Expedidos"].mean()
+
         df_recentes = df_filtrado.tail(5)
         weights = np.linspace(1, 2, len(df_recentes)) if len(df_recentes) > 0 else [1]
         weights /= weights.sum()
@@ -563,12 +570,11 @@ def main():
         pred_saudavel = np.dot(df_recentes["SAUDAVEL"], weights) if len(df_recentes) > 0 else media_saudavel
         pred_backlog = np.dot(df_recentes["BACKLOG"], weights) if len(df_recentes) > 0 else media_backlog
         pred_skus = np.dot(df_recentes["Total_SKUs"], weights) if len(df_recentes) > 0 else media_skus
-        
-        fator_expedicao = (
-            df_filtrado["Total_Expedidos"].sum() / df_filtrado["Total_PVs"].sum()
-            if df_filtrado["Total_PVs"].sum() > 0 else 1.0
-        )
-        expedicao_estimada_next = int((pred_saudavel + pred_backlog) * fator_expedicao)
+
+        df_exp_recentes = df_exp.tail(5)
+        weights_exp = np.linspace(1, 2, len(df_exp_recentes)) if len(df_exp_recentes) > 0 else [1]
+        weights_exp /= weights_exp.sum()
+        pred_expedidos = np.dot(df_exp_recentes["Total_Expedidos"], weights_exp) if len(df_exp_recentes) > 0 else media_expedidos
 
         pm1, pm2, pm3, pm4, pm5 = st.columns(5)
         pm1.metric(
@@ -593,9 +599,10 @@ def main():
             help=f"Média calculada para a unidade selecionada ({unidade_selecionada})."
         )
         pm5.metric(
-            "🚚 Expedição Preditiva Estimada",
-            f"{expedicao_estimada_next} vol.",
-            help="Previsão automatizada para o próximo ciclo."
+            "🚚 Média Preditiva de Expedição",
+            f"{pred_expedidos:.1f} vol.",
+            delta=f"{pred_expedidos - media_expedidos:+.1f} Projeção",
+            help="Média Preditiva baseada no histórico de notas com romaneio e expedição realizada."
         )
 
     # ==========================================
