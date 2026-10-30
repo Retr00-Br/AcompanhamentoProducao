@@ -497,7 +497,7 @@ def main():
                 marker=dict(color="#d90429", size=6, symbol="circle"),
                 line=dict(color="#d90429", width=1.8),
                 text=labels_dev,
-                textfont=dict(color="#a10011", size=11),
+                textfont=dict(color="#000000", size=11),
                 textposition="bottom center",
                 yaxis="y2",
                 cliponaxis=False,
