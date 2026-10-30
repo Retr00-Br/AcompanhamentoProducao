@@ -452,83 +452,89 @@ def main():
         f"R$ {media_dev_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
 
-    # --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES ---
-    if not df_filtrado.empty:
-        fig_fat_solo = go.Figure()
+# --- GRÁFICO 1: FATURAMENTO BRUTO VS DEVOLUÇÕES (PADRONIZADO) ---
+if not df_filtrado_prod.empty:
+    fig_fat_solo = go.Figure()
 
-        def fmt_brl(val):
-            if val >= 1_000_000:
-                return f"<b>R$ {val/1_000_000:.2f}M</b>".replace(".", ",")
-            elif val >= 1_000:
-                return f"<b>R$ {val/1_000:.0f}k</b>"
-            elif val > 0:
-                return f"<b>R$ {val:.0f}</b>"
-            return ""
+    def fmt_brl(val):
+        if val >= 1_000_000:
+            return f"<b>R$ {val/1_000_000:.2f}M</b>".replace(".", ",")
+        elif val >= 1_000:
+            return f"<b>R$ {val/1_000:.0f}k</b>"
+        elif val > 0:
+            return f"<b>R$ {val:.0f}</b>"
+        return ""
 
-        labels_fat = [fmt_brl(v) for v in df_filtrado[col_fat_ativa]]
-        labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado[col_dev_ativa]]
+    labels_fat = [fmt_brl(v) for v in df_filtrado_prod[col_fat_ativa]]
+    labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado_prod[col_dev_ativa]]
 
-        # Barras de Faturamento
-        fig_fat_solo.add_trace(
-            go.Bar(
-                x=df_filtrado["Data_Str"],
-                y=df_filtrado[col_fat_ativa],
-                name="Faturamento (R$)",
-                marker=dict(color="#2ec4b6", line=dict(color="#000000", width=1.2)),
-                text=labels_fat,
-                textfont=dict(color="#000000", size=13),
-                textposition="outside",
-                cliponaxis=False,
-            )
+    # Barras de Faturamento no modelo do Gráfico 2 (Azul #0077b6 com texto centralizado)
+    fig_fat_solo.add_trace(
+        go.Bar(
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod[col_fat_ativa],
+            name="Faturamento (R$)",
+            marker=dict(color="#0077b6", line=dict(color="#000000", width=1.2)),
+            text=labels_fat,
+            textfont=dict(color="#ffffff", size=13),
+            textposition="auto",
         )
+    )
 
-        # Linha de Devolução em PRETO (#000000)
-        fig_fat_solo.add_trace(
-            go.Scatter(
-                x=df_filtrado["Data_Str"],
-                y=df_filtrado[col_dev_ativa],
-                name="Devoluções (R$)",
-                mode="lines+markers+text",
-                marker=dict(color="#000000", size=11, symbol="circle"),
-                line=dict(color="#000000", width=3.5),
-                text=labels_dev,
-                textfont=dict(color="#000000", size=13),
-                textposition="top center",
-                cliponaxis=False,
-            )
+    # Linha de Devolução em Eixo Secundário (y2) para destaque limpo
+    fig_fat_solo.add_trace(
+        go.Scatter(
+            x=df_filtrado_prod["Data_Str"],
+            y=df_filtrado_prod[col_dev_ativa],
+            name="Devoluções (R$)",
+            mode="lines+markers+text",
+            marker=dict(color="#e63946", size=10, symbol="circle"),
+            line=dict(color="#e63946", width=3.5),
+            text=labels_dev,
+            textfont=dict(color="#000000", size=12),
+            textposition="top center",
+            yaxis="y2",
+            cliponaxis=False,
         )
+    )
 
-        # Configuração de Layout unificada e 100% compatível com a API do Plotly no Python 3.14
-        fig_fat_solo.update_layout(
-            template="plotly_white",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#000000", size=15, family="Arial"),
-            margin=dict(l=65, r=65, t=75, b=85),
-            height=620,
-            bargap=0.35,
-            yaxis=dict(
-                title=dict(text="<b>Valor Monetário (R$)</b>", font=dict(size=16)),
-                tickprefix="R$ ",
-                showgrid=True,
-                gridcolor="#e9ecef",
-                tickfont=dict(size=14),
-            ),
-            xaxis=dict(
-                title=dict(text="<b>Data (Dia/Mês)</b>", font=dict(size=16)),
-                type="category",
-                tickfont=dict(size=14),
-            ),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                font=dict(size=14),
-            ),
-        )
-        st.plotly_chart(fig_fat_solo, use_container_width=True)
+    fig_fat_solo.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=15, family="Arial"),
+        margin=dict(l=65, r=65, t=75, b=85),
+        height=620,
+        bargap=0.3,
+        yaxis=dict(
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=16)),
+            tickprefix="R$ ",
+            showgrid=True,
+            gridcolor="#e9ecef",
+            tickfont=dict(size=14),
+        ),
+        yaxis2=dict(
+            title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=16)),
+            overlaying="y",
+            side="right",
+            showgrid=False,
+            tickfont=dict(size=14),
+        ),
+        xaxis=dict(
+            title=dict(text="<b>Data (Dia/Mês)</b>", font=dict(size=16)),
+            type="category",
+            tickfont=dict(size=14),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=14),
+        ),
+    )
+    st.plotly_chart(fig_fat_solo, use_container_width=True)
 
     st.divider()
 
