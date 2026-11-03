@@ -7,7 +7,7 @@ import streamlit as st
 def load_treated_data_cached():
     """Lê diretamente as abas com os dados já consolidados de cada planilha."""
     data_dir = "./data/"
-    
+
     def get_path(filename):
         p = os.path.join(data_dir, filename)
         return p if os.path.exists(p) else (filename if os.path.exists(filename) else None)
@@ -17,10 +17,10 @@ def load_treated_data_cached():
     if path_prod:
         df_limpeza = pd.read_excel(path_prod, sheet_name="LimpezaDados")
         df_status = pd.read_excel(path_prod, sheet_name="DadosBacklogXSaudavel")
-        
+
         df_limpeza["DATA"] = pd.to_datetime(df_limpeza["DATA"], errors="coerce")
         df_status["DATA"] = pd.to_datetime(df_status["DATA"], errors="coerce")
-        
+
         df_prod_tratado = pd.merge(df_limpeza, df_status, on="DATA", how="outer")
     else:
         df_prod_tratado = pd.DataFrame(columns=["DATA", "Quantidade", "Saudavel", "Backlog"])
@@ -49,7 +49,7 @@ def load_treated_data_cached():
             df_frete_tratado = pd.read_excel(path_frete, sheet_name="26")
         except Exception:
             df_frete_tratado = pd.read_excel(path_frete, sheet_name=0)
-            
+
         df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["Data da solicitação"], errors="coerce")
         df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
             df_frete_tratado["Valor Total Frete"], errors="coerce"
