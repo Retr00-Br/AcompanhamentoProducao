@@ -172,7 +172,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             marker=dict(color="#d97706", size=8, symbol="circle"),
             line=dict(color="#d97706", width=2.5),
             text=[f"<b>{v:.2f}%</b>" if v > 0 else "" for v in y_pct_diario],
-            textfont=dict(color="#b45309", size=11),
+            textfont=dict(color="#000000", size=11),
             textposition="top center",
         )
     )
