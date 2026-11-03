@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from utils.loader import load_all_raw_data_cached
+from utils.loader import load_treated_data_cached
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
 from components.kpis import render_kpis_gerais, render_kpis_medias
@@ -20,89 +20,54 @@ st.set_page_config(
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def build_processed_dataset():
-    """Consolida e alinha todas as bases operacionais garantindo integridade de fatos."""
+    """Unifica diretamente as tabelas tratadas por data."""
     (
-        df_prod_bruto,
         df_prod_tratado,
         df_rom_tratado,
         df_fat_detalhado,
         df_fat_bruto_raw,
-        df_frete_raw,
-    ) = load_all_raw_data_cached()
+        df_frete_tratado,
+    ) = load_treated_data_cached()
 
-    if df_prod_tratado is None or df_rom_tratado is None:
+    if df_prod_tratado.empty or df_rom_tratado.empty:
         return None, None
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # 1. Tratamento da Produção (LimpezaDados + DadosBrutos)
-    df_p = df_prod_tratado.copy()
-    col_p_data = "DATA" if "DATA" in df_p.columns else df_p.columns[0]
-    col_p_qtd = "Quantidade" if "Quantidade" in df_p.columns else df_p.columns[1]
-
-    df_p["DATA"] = pd.to_datetime(df_p[col_p_data], errors="coerce")
-    df_p.rename(columns={col_p_qtd: "Total_PVs"}, inplace=True)
-
-    if df_prod_bruto is not None:
-        df_pb = df_prod_bruto.copy()
-        col_pb_data = "DATA" if "DATA" in df_pb.columns else df_pb.columns[2]
-        df_pb["DATA"] = pd.to_datetime(df_pb[col_pb_data], errors="coerce")
-
-        df_status_agg = (
-            df_pb.groupby(["DATA", "STATUS"])
-            .size()
-            .unstack(fill_value=0)
-            .reset_index()
-            if "STATUS" in df_pb.columns
-            else pd.DataFrame(columns=["DATA", "SAUDAVEL", "BACKLOG"])
-        )
-
-        for col in ["SAUDAVEL", "BACKLOG"]:
-            if col not in df_status_agg.columns:
-                df_status_agg[col] = 0
-
-        col_sku = "SKU'S" if "SKU'S" in df_pb.columns else ("SKU" if "SKU" in df_pb.columns else None)
-        df_sku_agg = (
-            df_pb.groupby("DATA")[col_sku].sum().reset_index(name="Total_SKUs")
-            if col_sku
-            else pd.DataFrame(columns=["DATA", "Total_SKUs"])
-        )
-
-        df_prod_completo = pd.merge(df_sku_agg, df_status_agg, on="DATA", how="outer").fillna(0)
-        df_diario = pd.merge(df_p, df_prod_completo, on="DATA", how="left").fillna(0)
-    else:
-        df_diario = df_p
-        df_diario["Total_SKUs"] = 0
-        df_diario["SAUDAVEL"] = 0
-        df_diario["BACKLOG"] = 0
-
-    # 2. Tratamento de Romaneios
-    df_r = df_rom_tratado.copy()
-    col_r_data = (
-        "Dt. Romaneio"
-        if "Dt. Romaneio" in df_r.columns
-        else ("DATA" if "DATA" in df_r.columns else df_r.columns[0])
+    # 1. Base Produção (PVs)
+    df_diario = df_prod_tratado.copy()
+    df_diario.rename(
+        columns={
+            "Quantidade": "Total_PVs",
+            "Saudavel": "SAUDAVEL",
+            "Backlog": "BACKLOG",
+        },
+        inplace=True,
     )
-    col_r_qtd = (
-        "Qtd. Expedição"
-        if "Qtd. Expedição" in df_r.columns
-        else ("Quantidade" if "Quantidade" in df_r.columns else df_r.columns[1])
-    )
+    df_diario["Total_SKUs"] = 0  # Preenchimento padrão para compatibilidade de layout
 
-    df_r["DATA"] = pd.to_datetime(df_r[col_r_data], errors="coerce")
-    df_r.rename(columns={col_r_qtd: "Total_Expedidos"}, inplace=True)
+    # 2. Unificação com Romaneios
+    df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
+    df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
 
-    df_diario = pd.merge(df_diario, df_r[["DATA", "Total_Expedidos"]], on="DATA", how="outer").fillna(0)
-
+    # 3. Unificação com Faturamento
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # 3. Tratamento de Frete Terceirizado
-    if df_frete_raw is not None and not df_frete_raw.empty:
-        df_frete_agg = df_frete_raw.groupby("DATA")["Valor Total Frete"].sum().reset_index(name="Total_Frete")
-        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
+    # 4. Unificação com Frete Terceirizado
+    if not df_frete_tratado.empty:
+        df_frete_agg = (
+            df_frete_tratado.groupby("DATA")
+            .agg({"Valor Total Frete": "sum", "Valor Total NF": "sum"})
+            .reset_index()
+            .rename(columns={"Valor Total Frete": "Total_Frete", "Valor Total NF": "Total_NF_Frete"})
+        )
+        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna(
+            {"Total_Frete": 0.0, "Total_NF_Frete": 0.0}
+        )
     else:
         df_diario["Total_Frete"] = 0.0
+        df_diario["Total_NF_Frete"] = 0.0
 
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
     return df_diario, df_fat_detalhado
@@ -130,7 +95,7 @@ def main():
             horizontal=True,
         )
 
-    # Identifica limites sem vazamento de datas isoladas
+    # Considera o mês operacional ativo (Outubro/Novembro)
     df_valido = df_diario[df_diario["Total_PVs"] > 0] if not df_diario[df_diario["Total_PVs"] > 0].empty else df_diario
     min_date = df_valido["DATA"].min().date()
     max_date = df_valido["DATA"].max().date()
@@ -162,18 +127,18 @@ def main():
             dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
 
-    # Aplicação estrita do filtro temporal
+    # Aplicação do Filtro Temporal
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
 
-    # Purgar totalmente a data 02/01 se o período filtrado for o mês atual/operação de outubro
+    # Purgar totalmente registros fora do ciclo (ex: 02/01)
     if dt_inicio.month >= 9:
         df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
 
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
-    # Seletor global de Filial
+    # Seletor de Filial
     opcoes_filiais = [
         "Todas as Unidades (Geral)",
         "0101 - Matriz",
