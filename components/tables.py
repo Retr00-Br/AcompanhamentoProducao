@@ -16,9 +16,21 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         codigo_filial = int(unidade_selecionada.split(" - ")[0])
         df_fd10 = df_fd10[df_fd10["Filial"] == codigo_filial]
 
-    col_cli_10 = "Cliente" if "Cliente" in df_fd10.columns else ("Nome Fantasia" if "Nome Fantasia" in df_fd10.columns else df_fd10.columns[2])
-    col_emissao_10 = "Data" if "Data" in df_fd10.columns else ("Emissão" if "Emissão" in df_fd10.columns else df_fd10.columns[0])
-    col_valor_10 = "R$ Fatur." if "R$ Fatur." in df_fd10.columns else ("Valor" if "Valor" in df_fd10.columns else df_fd10.columns[-1])
+    col_cli_10 = (
+        "Cliente"
+        if "Cliente" in df_fd10.columns
+        else ("Nome Fantasia" if "Nome Fantasia" in df_fd10.columns else df_fd10.columns[2])
+    )
+    col_emissao_10 = (
+        "Data"
+        if "Data" in df_fd10.columns
+        else ("Emissão" if "Emissão" in df_fd10.columns else df_fd10.columns[0])
+    )
+    col_valor_10 = (
+        "R$ Fatur."
+        if "R$ Fatur." in df_fd10.columns
+        else ("Valor" if "Valor" in df_fd10.columns else df_fd10.columns[-1])
+    )
 
     df_fd10["DATA_STR"] = pd.to_datetime(df_fd10[col_emissao_10], errors="coerce").dt.strftime("%Y-%m-%d")
     datas_disponiveis = sorted(df_fd10["DATA_STR"].dropna().unique())
@@ -56,7 +68,10 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
                 x=df_top10["Total_Faturado"],
                 orientation="h",
                 marker=dict(color="#118ab2"),
-                text=[f"<b>R$ {v:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", ".") for v in df_top10["Total_Faturado"]],
+                text=[
+                    f"<b>R$ {v:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", ".")
+                    for v in df_top10["Total_Faturado"]
+                ],
                 textposition="auto",
             )
         )
@@ -73,16 +88,20 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
 
 def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col_dev_ativa: str):
     with st.expander("🔍 Visualizar Tabela Consolidada"):
+        cols_para_exibir = [
+            "DATA",
+            "Total_PVs",
+            "SAUDAVEL",
+            "BACKLOG",
+            "Total_SKUs",
+            col_fat_ativa,
+            col_dev_ativa,
+            "Total_Expedidos",
+        ]
+        if "Total_Frete" in df_filtrado.columns:
+            cols_para_exibir.append("Total_Frete")
+
         st.dataframe(
-            df_filtrado[[
-                "DATA",
-                "Total_PVs",
-                "SAUDAVEL",
-                "BACKLOG",
-                "Total_SKUs",
-                col_fat_ativa,
-                col_dev_ativa,
-                "Total_Expedidos",
-            ]],
+            df_filtrado[cols_para_exibir],
             use_container_width=True,
         )

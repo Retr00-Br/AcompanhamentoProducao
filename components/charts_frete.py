@@ -12,38 +12,39 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
         st.info("Sem lançamentos de frete para o período selecionado.")
         return
 
-    # Cálculos dos KPIs
-    fat_total = float(df_filtrado[col_fat_ativa].sum()) if col_fat_ativa in df_filtrado.columns else 0.0
-    frete_total = float(df_filtrado["Total_Frete"].sum())
+    # Subconjunto estritamente contido no filtro de datas ativo do dashboard
+    df_frete_ativo = df_filtrado.copy()
 
-    dias_com_frete = len(df_filtrado[df_filtrado["Total_Frete"] > 0])
+    fat_total = float(df_frete_ativo[col_fat_ativa].sum()) if col_fat_ativa in df_frete_ativo.columns else 0.0
+    frete_total = float(df_frete_ativo["Total_Frete"].sum())
+
+    df_dias_frete = df_frete_ativo[df_frete_ativo["Total_Frete"] > 0]
+    dias_com_frete = len(df_dias_frete)
     divisor = dias_com_frete if dias_com_frete > 0 else 1
     media_frete_diaria = frete_total / divisor
 
     pct_frete_acumulado = (frete_total / fat_total * 100) if fat_total > 0 else 0.0
 
-    # Renderização das Métricas
+    # KPIs Numéricos
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(
         "💵 Frete Total Acumulado",
-        f"R$ {frete_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        f"R$ {frete_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
-    k2.metric(
-        "📊 % Frete / Faturamento",
-        f"{pct_frete_acumulado:.2f}%"
-    )
+    k2.metric("📊 % Frete / Faturamento", f"{pct_frete_acumulado:.2f}%")
     k3.metric(
         "📈 Média Frete / Dia",
-        f"R$ {media_frete_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        f"R$ {media_frete_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
-    k4.metric(
-        "📅 Dias c/ Operação de Frete",
-        f"{dias_com_frete} dias"
-    )
+    k4.metric("📅 Dias c/ Operação de Frete", f"{dias_com_frete} dias")
 
-    eixo_x = df_filtrado["Data_Str"].astype(str).tolist()
-    y_fat = df_filtrado[col_fat_ativa].astype(float).tolist()
-    y_frete = df_filtrado["Total_Frete"].astype(float).tolist()
+    if frete_total == 0:
+        st.warning("⚠️ Não foram encontrados lançamentos de frete para as datas selecionadas neste filtro temporal.")
+        return
+
+    eixo_x = df_frete_ativo["Data_Str"].astype(str).tolist()
+    y_fat = df_frete_ativo[col_fat_ativa].astype(float).tolist()
+    y_frete = df_frete_ativo["Total_Frete"].astype(float).tolist()
 
     max_fat = max(y_fat) if y_fat else 1000.0
     max_frete = max(y_frete) if y_frete else 1000.0
@@ -112,9 +113,10 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     st.plotly_chart(fig_fat_frete, use_container_width=True)
 
     # -------------------------------------------------------------
-    # GRÁFICO 2: VALOR DE FRETE ISOLADO POR DIA
+    # GRÁFICO 2: VALOR DE FRETE ISOLADO POR DIA (Respeitando a escala das datas ativas)
     # -------------------------------------------------------------
     st.subheader("📦 Custo Total de Frete por Dia (R$)")
+
     fig_frete_dia = go.Figure(
         go.Bar(
             x=eixo_x,

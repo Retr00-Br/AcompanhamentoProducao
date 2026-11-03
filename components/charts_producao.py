@@ -5,22 +5,26 @@ from utils.parser import fmt_brl
 
 
 def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str, unidade_selecionada: str):
-    
+
     # -------------------------------------------------------------
     # GRÁFICO 1: PRODUÇÃO (PV) VS FATURAMENTO
     # -------------------------------------------------------------
     st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
-    
-    max_pv = df_filtrado_prod["Total_PVs"].max() if not df_filtrado_prod.empty else 100
-    
+
+    eixo_x = df_filtrado_prod["Data_Str"].astype(str).tolist()
+    y_pvs = df_filtrado_prod["Total_PVs"].astype(float).tolist()
+    y_fat = df_filtrado_prod[col_fat_ativa].astype(float).tolist()
+
+    max_pv = max(y_pvs) if y_pvs else 100.0
+
     fig_fat = go.Figure()
     fig_fat.add_trace(
         go.Bar(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["Total_PVs"],
+            x=eixo_x,
+            y=y_pvs,
             name="PVs",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["Total_PVs"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_pvs],
             textfont=dict(color="#000000", size=12),
             textposition="outside",
             textangle=0,
@@ -29,17 +33,16 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     fig_fat.add_trace(
         go.Scatter(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod[col_fat_ativa],
+            x=eixo_x,
+            y=y_fat,
             name="Faturamento",
             mode="lines+markers+text",
-            text=[fmt_brl(v) for v in df_filtrado_prod[col_fat_ativa]],
+            text=[fmt_brl(v) for v in y_fat],
             textfont=dict(color="#000000", size=12),
             textposition="top center",
             marker=dict(color="#2ec4b6", size=8),
             line=dict(color="#2ec4b6", width=3),
             yaxis="y2",
-            cliponaxis=False,
         )
     )
     fig_fat.update_layout(
@@ -71,14 +74,16 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     # GRÁFICO 2: PRODUÇÃO (PV) VS SKUs/LINHAS
     # -------------------------------------------------------------
     st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs/Linhas")
+    y_skus = df_filtrado_prod["Total_SKUs"].astype(float).tolist()
+
     fig_sku = go.Figure()
     fig_sku.add_trace(
         go.Bar(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["Total_PVs"],
+            x=eixo_x,
+            y=y_pvs,
             name="PVs",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["Total_PVs"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_pvs],
             textfont=dict(color="#000000", size=12),
             textposition="outside",
             textangle=0,
@@ -87,17 +92,16 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     fig_sku.add_trace(
         go.Scatter(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["Total_SKUs"],
+            x=eixo_x,
+            y=y_skus,
             name="SKUs/Linhas",
             mode="lines+markers+text",
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["Total_SKUs"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_skus],
             textfont=dict(color="#000000", size=12),
             textposition="top center",
             marker=dict(color="#d97706", size=8),
             line=dict(color="#d97706", width=3),
             yaxis="y2",
-            cliponaxis=False,
         )
     )
     fig_sku.update_layout(
@@ -129,15 +133,17 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     # GRÁFICO 3: SAUDÁVEL VS BACKLOG
     # -------------------------------------------------------------
     st.subheader("📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
-    
+    y_saudavel = df_filtrado_prod["SAUDAVEL"].astype(float).tolist()
+    y_backlog = df_filtrado_prod["BACKLOG"].astype(float).tolist()
+
     fig_status = go.Figure()
     fig_status.add_trace(
         go.Bar(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["SAUDAVEL"],
+            x=eixo_x,
+            y=y_saudavel,
             name="Notas Saudáveis",
             marker=dict(color="#0f9f90", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["SAUDAVEL"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_saudavel],
             textfont=dict(color="#ffffff", size=11),
             textposition="inside",
             textangle=0,
@@ -146,11 +152,11 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     fig_status.add_trace(
         go.Bar(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["BACKLOG"],
+            x=eixo_x,
+            y=y_backlog,
             name="Backlog",
             marker=dict(color="#d9381e", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["BACKLOG"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_backlog],
             textfont=dict(color="#ffffff", size=11),
             textposition="inside",
             textangle=0,
@@ -178,20 +184,17 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     # GRÁFICO 4: PRODUÇÃO VS EXPEDIÇÃO
     # -------------------------------------------------------------
     st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
-    
-    max_comp = max(
-        df_filtrado_prod["Total_PVs"].max() if not df_filtrado_prod.empty else 100,
-        df_filtrado_prod["Total_Expedidos"].max() if not df_filtrado_prod.empty else 100,
-    )
+    y_expedidos = df_filtrado_prod["Total_Expedidos"].astype(float).tolist()
+    max_comp = max(max(y_pvs) if y_pvs else 100.0, max(y_expedidos) if y_expedidos else 100.0)
 
     fig_comp = go.Figure()
     fig_comp.add_trace(
         go.Bar(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["Total_PVs"],
+            x=eixo_x,
+            y=y_pvs,
             name="Produzidos",
             marker=dict(color="#0f9f90", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["Total_PVs"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_pvs],
             textfont=dict(color="#000000", size=11),
             textposition="outside",
             textangle=0,
@@ -200,11 +203,11 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     fig_comp.add_trace(
         go.Bar(
-            x=df_filtrado_prod["Data_Str"],
-            y=df_filtrado_prod["Total_Expedidos"],
+            x=eixo_x,
+            y=y_expedidos,
             name="Expedidos",
             marker=dict(color="#d9381e", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in df_filtrado_prod["Total_Expedidos"]],
+            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_expedidos],
             textfont=dict(color="#000000", size=11),
             textposition="outside",
             textangle=0,

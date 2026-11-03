@@ -18,7 +18,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
     st.markdown(f"### 💰 Faturamento & Devoluções ({unidade_selecionada})")
     kf1, kf2, kf3, kf4 = st.columns(4)
-    
+
     kf1.metric("💵 Faturamento Total", f"R$ {fat_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     kf2.metric("🔴 Total Devoluções", f"R$ {dev_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     kf3.metric("📊 Média Faturada/Dia", f"R$ {media_fat:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
@@ -37,7 +37,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         max_fat = max(y_fat) if y_fat else 1000.0
         max_dev = max(y_dev) if y_dev else 1000.0
 
-        # Barras de Faturamento (go.Bar aceita textangle)
+        # Barras de Faturamento
         fig_fat_solo.add_trace(
             go.Bar(
                 x=eixo_x,
@@ -52,7 +52,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             )
         )
 
-        # Linha de Devoluções (go.Scatter NÃO aceita textangle - removido)
+        # Linha de Devoluções
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=eixo_x,
@@ -109,5 +109,4 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
         st.plotly_chart(fig_fat_solo, use_container_width=True)
 
-    st.divider()
     st.divider()

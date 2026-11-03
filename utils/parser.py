@@ -20,22 +20,35 @@ def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
     sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
     sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
 
-    tot_col_j = pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0) if df_data.shape[1] > 9 else (matriz_fat + rj_fat + cp_fat + sbc_fat)
-    dev_col_k = abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0)) if df_data.shape[1] > 10 else (matriz_dev + rj_dev + cp_dev + sbc_dev)
+    tot_col_j = (
+        pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0)
+        if df_data.shape[1] > 9
+        else (matriz_fat + rj_fat + cp_fat + sbc_fat)
+    )
+    dev_col_k = (
+        abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0))
+        if df_data.shape[1] > 10
+        else (matriz_dev + rj_dev + cp_dev + sbc_dev)
+    )
 
-    df_fat = pd.DataFrame({
-        "DATA": col_data,
-        "0101 - Matriz_Fat": matriz_fat,
-        "0101 - Matriz_Dev": matriz_dev,
-        "0102 - Filial RJ_Fat": rj_fat,
-        "0102 - Filial RJ_Dev": rj_dev,
-        "0103 - Filial CP_Fat": cp_fat,
-        "0103 - Filial CP_Dev": cp_dev,
-        "0104 - Filial SBC_Fat": sbc_fat,
-        "0104 - Filial SBC_Dev": sbc_dev,
-        "Todas as Unidades (Geral)_Fat": tot_col_j,
-        "Todas as Unidades (Geral)_Dev": dev_col_k,
-    }).dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
+    df_fat = (
+        pd.DataFrame({
+            "DATA": col_data,
+            "0101 - Matriz_Fat": matriz_fat,
+            "0101 - Matriz_Dev": matriz_dev,
+            "0102 - Filial RJ_Fat": rj_fat,
+            "0102 - Filial RJ_Dev": rj_dev,
+            "0103 - Filial CP_Fat": cp_fat,
+            "0103 - Filial CP_Dev": cp_dev,
+            "0104 - Filial SBC_Fat": sbc_fat,
+            "0104 - Filial SBC_Dev": sbc_dev,
+            "Todas as Unidades (Geral)_Fat": tot_col_j,
+            "Todas as Unidades (Geral)_Dev": dev_col_k,
+        })
+        .dropna(subset=["DATA"])
+        .sort_values("DATA")
+        .reset_index(drop=True)
+    )
 
     return df_fat
 

@@ -22,14 +22,14 @@ def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
     dias_com_fat = len(df_filtrado[df_filtrado[col_fat_ativa] > 0])
     media_fat_diaria = fat_total / (dias_com_fat if dias_com_fat > 0 else 1)
 
-    media_saudavel = df_filtrado["SAUDAVEL"].mean()
-    media_backlog = df_filtrado["BACKLOG"].mean()
-    media_skus = df_filtrado["Total_SKUs"].mean()
+    media_saudavel = float(df_filtrado["SAUDAVEL"].mean())
+    media_backlog = float(df_filtrado["BACKLOG"].mean())
+    media_skus = float(df_filtrado["Total_SKUs"].mean())
 
     df_exp = df_filtrado[df_filtrado["Total_Expedidos"] > 0]
     if df_exp.empty:
         df_exp = df_filtrado
-    media_expedidos = df_exp["Total_Expedidos"].mean()
+    media_expedidos = float(df_exp["Total_Expedidos"].mean())
 
     pm1, pm2, pm3, pm4, pm5 = st.columns(5)
     pm1.metric("📈 Média Saudável/Dia", f"{media_saudavel:.1f}")
@@ -42,5 +42,5 @@ def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
     pm5.metric(
         "🚚 Média de Expedição",
         f"{media_expedidos:.1f} vol.",
-        help="Média diária de volumes expedidos considerando apenas dias com operação de romaneio."
+        help="Média diária de volumes expedidos considerando apenas dias com operação de romaneio.",
     )
