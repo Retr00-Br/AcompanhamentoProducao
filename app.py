@@ -481,7 +481,7 @@ def main():
                 name="Faturamento (R$)",
                 marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
                 text=labels_fat,
-                textfont=dict(color="#000000", size=12),
+                textfont=dict(color="#000000", size=14),
                 textposition="outside",
                 cliponaxis=False,
             )
