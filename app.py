@@ -18,9 +18,9 @@ st.set_page_config(
 )
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Unifica diretamente as tabelas tratadas preservando a soma real de SKUs."""
+    """Consolida os dados integrando o SKU real da base sem gargalos de memória."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -44,23 +44,22 @@ def build_processed_dataset():
         },
         inplace=True,
     )
-    
-    # Garantir que Total_SKUs seja numérico
+
     if "Total_SKUs" in df_diario.columns:
         df_diario["Total_SKUs"] = pd.to_numeric(df_diario["Total_SKUs"], errors="coerce").fillna(0)
     else:
         df_diario["Total_SKUs"] = 0
 
-    # 2. Unificação com Romaneios
+    # 2. Romaneios
     df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
     df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
 
-    # 3. Unificação com Faturamento
+    # 3. Faturamento
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # 4. Unificação com Frete Terceirizado
-    if not df_frete_tratado.empty:
+    # 4. Fretes Terceirizados
+    if not df_frete_tratado.empty and "Total_Frete" not in df_diario.columns:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")
             .agg({"Valor Total Frete": "sum", "Valor Total NF": "sum"})
@@ -70,7 +69,8 @@ def build_processed_dataset():
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna(
             {"Total_Frete": 0.0, "Total_NF_Frete": 0.0}
         )
-    else:
+
+    if "Total_Frete" not in df_diario.columns:
         df_diario["Total_Frete"] = 0.0
         df_diario["Total_NF_Frete"] = 0.0
 
@@ -81,6 +81,13 @@ def build_processed_dataset():
 def main():
     ui = DashboardUI()
     ui.render_header()
+
+    # Botão de emergência na barra lateral para limpar cache caso necessário
+    with st.sidebar:
+        st.markdown("### ⚙️ Gestão de Cache")
+        if st.button("🔄 Limpar Cache e Forçar Atualização"):
+            st.cache_data.clear()
+            st.rerun()
 
     os.makedirs("./data/", exist_ok=True)
     df_diario, df_fat_detalhado = build_processed_dataset()
@@ -100,7 +107,6 @@ def main():
             horizontal=True,
         )
 
-    # Considera o mês operacional ativo (Outubro/Novembro)
     df_valido = df_diario[df_diario["Total_PVs"] > 0] if not df_diario[df_diario["Total_PVs"] > 0].empty else df_diario
     min_date = df_valido["DATA"].min().date()
     max_date = df_valido["DATA"].max().date()
@@ -137,7 +143,7 @@ def main():
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
 
-    # Purgar totalmente a data 02/01
+    # Purga da data de teste 02/01
     df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
 
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
