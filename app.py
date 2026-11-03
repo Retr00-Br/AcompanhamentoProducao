@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def build_processed_dataset():
-    """Consolida e pré-computa em memória RAM os DataFrames unificados."""
+    """Consolida e pré-computa em memória os DataFrames unificados."""
     (
         df_prod_bruto,
         df_prod_tratado,
@@ -97,13 +97,14 @@ def build_processed_dataset():
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # 3. Fretes (Merge Left estrito)
+    # 3. Frete Terceirizado (Soma exata da Coluna M da planilha)
     if df_frete_raw is not None and not df_frete_raw.empty:
         df_frete_agg = df_frete_raw.groupby("DATA")["Valor Total Frete"].sum().reset_index(name="Total_Frete")
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
     else:
         df_diario["Total_Frete"] = 0.0
 
+    # Purga datas nulas e ajusta ordem
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
     return df_diario, df_fat_detalhado
 
@@ -130,6 +131,7 @@ def main():
             horizontal=True,
         )
 
+    # Considera o início pelo primeiro mês operacional
     df_valido = df_diario[df_diario["Total_PVs"] > 0] if not df_diario[df_diario["Total_PVs"] > 0].empty else df_diario
     min_date = df_valido["DATA"].min().date()
     max_date = df_valido["DATA"].max().date()
@@ -161,11 +163,14 @@ def main():
             dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
 
-    # Aplicação estrita do filtro de datas
+    # Aplicação do Filtro Temporal
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
     
+    # REMOÇÃO DO DIA 02/01 SE NÃO ESTIVER DENTRO DO MÊS SELECIONADO
+    df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
+
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
     # Seletor global de Filial
@@ -181,7 +186,7 @@ def main():
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    # Renderização ultrarrápida em cadeia
+    # Renderização da Aplicação
     render_kpis_gerais(df_filtrado)
     render_secao_faturamento(df_filtrado, unidade_selecionada)
     render_kpis_medias(df_filtrado, unidade_selecionada)

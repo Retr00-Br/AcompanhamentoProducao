@@ -6,16 +6,22 @@ from utils.parser import fmt_brl
 
 def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str, unidade_selecionada: str):
 
-    # -------------------------------------------------------------
-    # GRÁFICO 1: PRODUÇÃO (PV) VS FATURAMENTO
-    # -------------------------------------------------------------
-    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
+    # PURGA DOS DIAS ANTERIORES AO PRIMEIRA DIA DE PRODUÇÃO (PVs > 0)
+    df_prod_ativa = df_filtrado_prod.copy()
+    if not df_prod_ativa[df_prod_ativa["Total_PVs"] > 0].empty:
+        primeira_data_prod = df_prod_ativa[df_prod_ativa["Total_PVs"] > 0]["DATA"].min()
+        df_prod_ativa = df_prod_ativa[df_prod_ativa["DATA"] >= primeira_data_prod].reset_index(drop=True)
 
-    eixo_x = df_filtrado_prod["Data_Str"].astype(str).tolist()
-    y_pvs = df_filtrado_prod["Total_PVs"].astype(float).tolist()
-    y_fat = df_filtrado_prod[col_fat_ativa].astype(float).tolist()
+    eixo_x = df_prod_ativa["Data_Str"].astype(str).tolist()
+    y_pvs = df_prod_ativa["Total_PVs"].astype(float).tolist()
+    y_fat = df_prod_ativa[col_fat_ativa].astype(float).tolist()
 
     max_pv = max(y_pvs) if y_pvs else 100.0
+
+    # -------------------------------------------------------------
+    # GRÁFICO 2: PRODUÇÃO (PV) VS FATURAMENTO
+    # -------------------------------------------------------------
+    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
 
     fig_fat = go.Figure()
     fig_fat.add_trace(
@@ -71,10 +77,10 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     st.plotly_chart(fig_fat, use_container_width=True)
 
     # -------------------------------------------------------------
-    # GRÁFICO 2: PRODUÇÃO (PV) VS SKUs/LINHAS
+    # GRÁFICO 3: PRODUÇÃO (PV) VS SKUs/LINHAS
     # -------------------------------------------------------------
     st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs/Linhas")
-    y_skus = df_filtrado_prod["Total_SKUs"].astype(float).tolist()
+    y_skus = df_prod_ativa["Total_SKUs"].astype(float).tolist()
 
     fig_sku = go.Figure()
     fig_sku.add_trace(
@@ -130,11 +136,11 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     st.plotly_chart(fig_sku, use_container_width=True)
 
     # -------------------------------------------------------------
-    # GRÁFICO 3: SAUDÁVEL VS BACKLOG
+    # GRÁFICO 4: SAUDÁVEL VS BACKLOG
     # -------------------------------------------------------------
     st.subheader("📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
-    y_saudavel = df_filtrado_prod["SAUDAVEL"].astype(float).tolist()
-    y_backlog = df_filtrado_prod["BACKLOG"].astype(float).tolist()
+    y_saudavel = df_prod_ativa["SAUDAVEL"].astype(float).tolist()
+    y_backlog = df_prod_ativa["BACKLOG"].astype(float).tolist()
 
     fig_status = go.Figure()
     fig_status.add_trace(
@@ -181,10 +187,10 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     st.plotly_chart(fig_status, use_container_width=True)
 
     # -------------------------------------------------------------
-    # GRÁFICO 4: PRODUÇÃO VS EXPEDIÇÃO
+    # GRÁFICO 5: PRODUÇÃO VS EXPEDIÇÃO
     # -------------------------------------------------------------
     st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
-    y_expedidos = df_filtrado_prod["Total_Expedidos"].astype(float).tolist()
+    y_expedidos = df_prod_ativa["Total_Expedidos"].astype(float).tolist()
     max_comp = max(max(y_pvs) if y_pvs else 100.0, max(y_expedidos) if y_expedidos else 100.0)
 
     fig_comp = go.Figure()

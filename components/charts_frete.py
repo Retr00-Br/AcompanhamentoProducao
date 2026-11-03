@@ -14,6 +14,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     df_frete_ativo = df_filtrado.copy()
 
+    # CÁLCULO PONDERADO REAL: Soma da Coluna M / Soma da Coluna E (Faturamento)
     fat_total = float(df_frete_ativo[col_fat_ativa].sum()) if col_fat_ativa in df_frete_ativo.columns else 0.0
     frete_total = float(df_frete_ativo["Total_Frete"].sum())
 
@@ -22,15 +23,16 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     divisor = dias_com_frete if dias_com_frete > 0 else 1
     media_frete_diaria = frete_total / divisor
 
+    # KPI de Porcentagem Ponderada Real do Frete
     pct_frete_acumulado = (frete_total / fat_total * 100) if fat_total > 0 else 0.0
 
-    # KPIs
+    # KPIs Principais
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(
-        "💵 Frete Total Acumulado",
+        "💵 Frete Total Acumulado (Coluna M)",
         f"R$ {frete_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
-    k2.metric("📊 % Frete / Faturamento", f"{pct_frete_acumulado:.2f}%")
+    k2.metric("📊 % Frete / Faturamento (Ponderado)", f"{pct_frete_acumulado:.2f}%")
     k3.metric(
         "📈 Média Frete / Dia",
         f"R$ {media_frete_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
@@ -45,10 +47,19 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     y_fat = df_frete_ativo[col_fat_ativa].astype(float).tolist()
     y_frete = df_frete_ativo["Total_Frete"].astype(float).tolist()
 
+    # Cálculo da Porcentagem Diária (% Frete / Faturamento do Dia)
+    y_pct_diario = [
+        (frete / fat * 100) if fat > 0 else 0.0
+        for frete, fat in zip(y_frete, y_fat)
+    ]
+
     max_fat = max(y_fat) if y_fat else 1000.0
     max_frete = max(y_frete) if y_frete else 1000.0
+    max_pct = max(y_pct_diario) if y_pct_diario else 10.0
 
+    # -------------------------------------------------------------
     # GRÁFICO 1: FATURAMENTO VS FRETE POR DIA
+    # -------------------------------------------------------------
     st.subheader("📊 Faturamento Diário vs. Valor do Frete Terceirizado")
     fig_fat_frete = go.Figure()
 
@@ -108,7 +119,9 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     st.plotly_chart(fig_fat_frete, use_container_width=True)
 
-    # GRÁFICO 2: CUSTO TOTAL DE FRETE POR DIA
+    # -------------------------------------------------------------
+    # GRÁFICO 2: CUSTO TOTAL DE FRETE POR DIA (R$)
+    # -------------------------------------------------------------
     st.subheader("📦 Custo Total de Frete por Dia (R$)")
 
     fig_frete_dia = go.Figure(
@@ -143,3 +156,41 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     )
 
     st.plotly_chart(fig_frete_dia, use_container_width=True)
+
+    # -------------------------------------------------------------
+    # GRÁFICO 3 (NOVO): PORCENTAGEM DE FRETE POR DIA (% Frete / Faturamento)
+    # -------------------------------------------------------------
+    st.subheader("📈 Porcentagem (%) de Frete sobre o Faturamento Diário")
+
+    fig_pct_frete = go.Figure(
+        go.Scatter(
+            x=eixo_x,
+            y=y_pct_diario,
+            name="% Frete Diário",
+            mode="lines+markers+text",
+            marker=dict(color="#d97706", size=8, symbol="circle"),
+            line=dict(color="#d97706", width=2.5),
+            text=[f"<b>{v:.2f}%</b>" if v > 0 else "" for v in y_pct_diario],
+            textfont=dict(color="#d97706", size=11),
+            textposition="top center",
+        )
+    )
+
+    fig_pct_frete.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=13, family="Arial"),
+        margin=dict(l=65, r=65, t=65, b=65),
+        height=480,
+        yaxis=dict(
+            title=dict(text="<b>% Frete / Faturamento</b>", font=dict(size=14)),
+            ticksuffix="%",
+            showgrid=True,
+            gridcolor="#e9ecef",
+            range=[0, max_pct * 1.35] if max_pct > 0 else [0, 10],
+        ),
+        xaxis=dict(type="category"),
+    )
+
+    st.plotly_chart(fig_pct_frete, use_container_width=True)
