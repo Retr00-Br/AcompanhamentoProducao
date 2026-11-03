@@ -26,7 +26,6 @@ def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
     media_backlog = df_filtrado["BACKLOG"].mean()
     media_skus = df_filtrado["Total_SKUs"].mean()
 
-    # Média isolada de expedição (sem preditivos)
     df_exp = df_filtrado[df_filtrado["Total_Expedidos"] > 0]
     if df_exp.empty:
         df_exp = df_filtrado

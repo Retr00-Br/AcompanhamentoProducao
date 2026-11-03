@@ -33,7 +33,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         max_fat = df_filtrado[col_fat_ativa].max() if not df_filtrado[col_fat_ativa].empty else 1000
         max_dev = df_filtrado[col_dev_ativa].max() if not df_filtrado[col_dev_ativa].empty else 1000
 
-        # Barras de Faturamento (Texto no topo, sempre horizontal)
+        # Barras de Faturamento
         fig_fat_solo.add_trace(
             go.Bar(
                 x=df_filtrado["Data_Str"],
@@ -43,12 +43,12 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
                 text=labels_fat,
                 textfont=dict(color="#000000", size=11),
                 textposition="outside",
-                textangle=0,  # Padronização horizontal
+                textangle=0,
                 cliponaxis=False,
             )
         )
 
-        # Linha de Devoluções (Texto posicionado logo abaixo dos marcadores para evitar colisão)
+        # Linha de Devoluções (CORRIGIDO: family='Arial')
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=df_filtrado["Data_Str"],
@@ -58,9 +58,9 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
                 marker=dict(color="#d90429", size=7, symbol="circle"),
                 line=dict(color="#d90429", width=2.0),
                 text=labels_dev,
-                textfont=dict(color="#d90429", size=11, family="Arial Black"),
+                textfont=dict(color="#d90429", size=11, family="Arial"),
                 textposition="bottom center",
-                textangle=0,  # Padronização horizontal
+                textangle=0,
                 yaxis="y2",
                 cliponaxis=False,
             )
@@ -73,14 +73,13 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             font=dict(color="#000000", size=13, family="Arial"),
             margin=dict(l=65, r=65, t=75, b=65),
             height=640,
-            bargap=0.15,  # Aumenta a largura das barras
+            bargap=0.15,
             yaxis=dict(
                 title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=14)),
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
                 tickfont=dict(size=12),
-                # Range expandido para dar respiro aos números das barras
                 range=[0, max_fat * 1.35] if max_fat > 0 else None,
             ),
             yaxis2=dict(
@@ -89,7 +88,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
                 side="right",
                 showgrid=False,
                 tickfont=dict(size=12),
-                # Scale offset para afastar a linha dos topos de barras e evitar colisão
                 range=[0, max_dev * 1.60] if max_dev > 0 else None,
             ),
             xaxis=dict(
