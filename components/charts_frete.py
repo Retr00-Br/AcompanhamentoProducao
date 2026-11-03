@@ -12,7 +12,6 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
         st.info("Sem lançamentos de frete para o período selecionado.")
         return
 
-    # Subconjunto estritamente contido no filtro de datas ativo do dashboard
     df_frete_ativo = df_filtrado.copy()
 
     fat_total = float(df_frete_ativo[col_fat_ativa].sum()) if col_fat_ativa in df_frete_ativo.columns else 0.0
@@ -25,7 +24,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     pct_frete_acumulado = (frete_total / fat_total * 100) if fat_total > 0 else 0.0
 
-    # KPIs Numéricos
+    # KPIs
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(
         "💵 Frete Total Acumulado",
@@ -39,7 +38,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     k4.metric("📅 Dias c/ Operação de Frete", f"{dias_com_frete} dias")
 
     if frete_total == 0:
-        st.warning("⚠️ Não foram encontrados lançamentos de frete para as datas selecionadas neste filtro temporal.")
+        st.info("ℹ️ Não foram encontrados lançamentos de frete para o período selecionado.")
         return
 
     eixo_x = df_frete_ativo["Data_Str"].astype(str).tolist()
@@ -49,9 +48,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     max_fat = max(y_fat) if y_fat else 1000.0
     max_frete = max(y_frete) if y_frete else 1000.0
 
-    # -------------------------------------------------------------
     # GRÁFICO 1: FATURAMENTO VS FRETE POR DIA
-    # -------------------------------------------------------------
     st.subheader("📊 Faturamento Diário vs. Valor do Frete Terceirizado")
     fig_fat_frete = go.Figure()
 
@@ -65,7 +62,6 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             textfont=dict(color="#000000", size=11),
             textposition="outside",
             textangle=0,
-            cliponaxis=False,
         )
     )
 
@@ -90,7 +86,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=13, family="Arial"),
         margin=dict(l=65, r=65, t=65, b=65),
-        height=580,
+        height=540,
         bargap=0.15,
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=14)),
@@ -112,9 +108,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     st.plotly_chart(fig_fat_frete, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # GRÁFICO 2: VALOR DE FRETE ISOLADO POR DIA (Respeitando a escala das datas ativas)
-    # -------------------------------------------------------------
+    # GRÁFICO 2: CUSTO TOTAL DE FRETE POR DIA
     st.subheader("📦 Custo Total de Frete por Dia (R$)")
 
     fig_frete_dia = go.Figure(
@@ -127,7 +121,6 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             textfont=dict(color="#000000", size=11),
             textposition="outside",
             textangle=0,
-            cliponaxis=False,
         )
     )
 
@@ -137,7 +130,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=13, family="Arial"),
         margin=dict(l=65, r=65, t=65, b=65),
-        height=520,
+        height=480,
         bargap=0.15,
         yaxis=dict(
             title=dict(text="<b>Valor de Frete (R$)</b>", font=dict(size=14)),

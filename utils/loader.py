@@ -5,7 +5,7 @@ from utils.security import DataSecurityManager
 
 
 class DataLoader:
-    """Carregador de dados de alta performance com cache em memória do Streamlit."""
+    """Carregador de dados ultrarrápido utilizando caching nativo do Streamlit."""
 
     DATA_DIR = "./data/"
 
@@ -43,7 +43,7 @@ class DataLoader:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_frete_multisheets_cached(filename: str = "SOLICITACAO TERCEIROS.xlsx", data_dir: str = "./data/") -> pd.DataFrame:
-    """Carrega e consolida com cache em memória todas as abas contendo fretes."""
+    """Consolida todas as abas da planilha de fretes terceirizados em cache."""
     target_path = os.path.join(data_dir, filename)
     if not os.path.exists(target_path) and os.path.exists(filename):
         target_path = filename
@@ -58,6 +58,7 @@ def load_frete_multisheets_cached(filename: str = "SOLICITACAO TERCEIROS.xlsx", 
         for sheet in xls.sheet_names:
             df = pd.read_excel(target_path, sheet_name=sheet)
             
+            # Trata cabeçalhos descolados
             if df.shape[0] > 0 and df.shape[1] > 1 and df.iloc[0, 0] == "Data da solicitação":
                 df.columns = df.iloc[0]
                 df = df.iloc[1:]
@@ -80,7 +81,7 @@ def load_frete_multisheets_cached(filename: str = "SOLICITACAO TERCEIROS.xlsx", 
     return pd.DataFrame()
 
 
-@st.cache_data(ttl=3600, show_spinner="Carregando planilhas operacionais...")
+@st.cache_data(ttl=3600, show_spinner="Carregando e indexando bases de dados...")
 def load_all_raw_data_cached():
     loader = DataLoader()
     df_prod_bruto = loader.read_dataframe("DadosProducao.xlsx", "DadosBrutos")
