@@ -6,7 +6,7 @@ from utils.parser import fmt_brl
 
 def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str, unidade_selecionada: str):
 
-    # PURGA DE DIAS ANTERIORES AO INÍCIO DA PRODUÇÃO
+    # PURGA DE DIAS ANTERIORES AO INÍCIO DA PRODUÇÃO (PVs > 0)
     df_prod_ativa = df_filtrado_prod.copy()
     if not df_prod_ativa[df_prod_ativa["Total_PVs"] > 0].empty:
         primeira_data_prod = df_prod_ativa[df_prod_ativa["Total_PVs"] > 0]["DATA"].min()
@@ -43,8 +43,8 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
             y=y_fat,
             name="Faturamento",
             mode="lines+markers+text",
-            text=[f"<b>{fmt_brl(v)}</b>" for v in y_fat],
-            textfont=dict(color="#000000", size=11),
+            text=[f"<b>{fmt_brl(v)}</b>" if v > 0 else "" for v in y_fat],
+            textfont=dict(color="#000000", size=11),  # Preto estrito
             textposition="top center",
             marker=dict(color="#0a9396", size=8, symbol="circle"),
             line=dict(color="#0a9396", width=2.5),
@@ -80,7 +80,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     st.plotly_chart(fig_fat, use_container_width=True)
 
     # -------------------------------------------------------------
-    # GRÁFICO 3: PRODUÇÃO (PV) VS SKUs/LINHAS (COM SOMA REAL DE DADOSBRUTOS)
+    # GRÁFICO 3: PRODUÇÃO (PV) VS SKUs/LINHAS (SOMA REAL)
     # -------------------------------------------------------------
     st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs/Linhas")
     y_skus = df_prod_ativa["Total_SKUs"].astype(float).tolist()
@@ -106,7 +106,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
             name="SKUs/Linhas",
             mode="lines+markers+text",
             text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_skus],
-            textfont=dict(color="#000000", size=11),
+            textfont=dict(color="#000000", size=11),  # Preto estrito
             textposition="top center",
             marker=dict(color="#d97706", size=8, symbol="diamond"),
             line=dict(color="#d97706", width=2.5),

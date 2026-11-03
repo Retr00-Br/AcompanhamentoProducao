@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def build_processed_dataset():
-    """Unifica diretamente as tabelas tratadas por data."""
+    """Unifica diretamente as tabelas tratadas preservando a soma real de SKUs."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -34,7 +34,7 @@ def build_processed_dataset():
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # 1. Base Produção (PVs)
+    # 1. Base Produção (PVs + Status + SKUs)
     df_diario = df_prod_tratado.copy()
     df_diario.rename(
         columns={
@@ -44,7 +44,12 @@ def build_processed_dataset():
         },
         inplace=True,
     )
-    df_diario["Total_SKUs"] = 0  # Preenchimento padrão para compatibilidade de layout
+    
+    # Garantir que Total_SKUs seja numérico
+    if "Total_SKUs" in df_diario.columns:
+        df_diario["Total_SKUs"] = pd.to_numeric(df_diario["Total_SKUs"], errors="coerce").fillna(0)
+    else:
+        df_diario["Total_SKUs"] = 0
 
     # 2. Unificação com Romaneios
     df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
@@ -132,9 +137,8 @@ def main():
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
 
-    # Purgar totalmente registros fora do ciclo (ex: 02/01)
-    if dt_inicio.month >= 9:
-        df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
+    # Purgar totalmente a data 02/01
+    df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
 
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 

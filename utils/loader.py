@@ -5,14 +5,14 @@ import streamlit as st
 
 @st.cache_data(ttl=3600, show_spinner="Carregando e integrando bases de dados...")
 def load_treated_data_cached():
-    """Lê as abas tratadas e extrai a soma real de SKUs diretamente da aba DadosBrutos."""
+    """Lê as abas tratadas e extrai a soma de SKUs da aba DadosBrutos."""
     data_dir = "./data/"
 
     def get_path(filename):
         p = os.path.join(data_dir, filename)
         return p if os.path.exists(p) else (filename if os.path.exists(filename) else None)
 
-    # 1. Produção: LimpezaDados + DadosBacklogXSaudavel + Agregação da Coluna SKU'S de DadosBrutos
+    # 1. Produção: LimpezaDados + DadosBacklogXSaudavel + Agregação da Coluna SKU'S da aba DadosBrutos
     path_prod = get_path("DadosProducao.xlsx")
     if path_prod:
         df_limpeza = pd.read_excel(path_prod, sheet_name="LimpezaDados")
@@ -23,7 +23,7 @@ def load_treated_data_cached():
 
         df_prod_base = pd.merge(df_limpeza, df_status, on="DATA", how="outer")
 
-        # Extração direta da coluna SKU'S da aba DadosBrutos
+        # Extração direta dos SKUs agregados por DATA
         try:
             df_brutos = pd.read_excel(path_prod, sheet_name="DadosBrutos")
             col_sku = "SKU'S" if "SKU'S" in df_brutos.columns else ("SKU" if "SKU" in df_brutos.columns else None)

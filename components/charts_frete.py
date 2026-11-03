@@ -53,7 +53,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     max_frete = max(y_frete) if y_frete else 1000.0
     max_pct = max(y_pct_diario) if y_pct_diario else 10.0
 
-    # GRÁFICO 1: FATURAMENTO VS FRETE POR DIA (CORES REVISADAS)
+    # GRÁFICO 1: FATURAMENTO VS FRETE
     st.subheader("📊 Faturamento Diário vs. Valor do Frete Terceirizado")
     fig_fat_frete = go.Figure()
 
@@ -78,7 +78,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             marker=dict(color="#c1121f", size=8, symbol="diamond"),
             line=dict(color="#c1121f", width=2.5),
             text=[f"<b>R$ {v:,.0f}</b>" if v > 0 else "" for v in y_frete],
-            textfont=dict(color="#780000", size=11),
+            textfont=dict(color="#000000", size=11),  # Texto em preto estrito
             textposition="top center",
             yaxis="y2",
         )
@@ -150,12 +150,12 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     st.plotly_chart(fig_frete_dia, use_container_width=True)
 
-    # GRÁFICO 3: PORCENTAGEM DE FRETE COM VALOR TOTAL ABAIXO DO PERÍODO
+    # GRÁFICO 3: PORCENTAGEM DE FRETE POR DIA
     st.subheader("📈 Porcentagem (%) de Frete sobre o Faturamento Diário")
 
     fmt_frete_str = f"R$ {frete_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     fmt_fat_str = f"R$ {fat_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    
+
     st.caption(
         f"**Média Ponderada Acumulada do Período:** `{pct_frete_acumulado:.2f}%` "
         f"(Total Frete: **{fmt_frete_str}** | Total Faturamento: **{fmt_fat_str}**)"
@@ -172,7 +172,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             marker=dict(color="#d97706", size=8, symbol="circle"),
             line=dict(color="#d97706", width=2.5),
             text=[f"<b>{v:.2f}%</b>" if v > 0 else "" for v in y_pct_diario],
-            textfont=dict(color="#000000", size=11),
+            textfont=dict(color="#000000", size=11),  # Texto em preto estrito
             textposition="top center",
         )
     )
