@@ -27,7 +27,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
 
-        # Conversão explícita dos dados para listas nativas do Python
         eixo_x = df_filtrado["Data_Str"].astype(str).tolist()
         y_fat = df_filtrado[col_fat_ativa].astype(float).tolist()
         y_dev = df_filtrado[col_dev_ativa].astype(float).tolist()
@@ -38,7 +37,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         max_fat = max(y_fat) if y_fat else 1000.0
         max_dev = max(y_dev) if y_dev else 1000.0
 
-        # Barras de Faturamento
+        # Barras de Faturamento (go.Bar aceita textangle)
         fig_fat_solo.add_trace(
             go.Bar(
                 x=eixo_x,
@@ -53,7 +52,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             )
         )
 
-        # Linha de Devoluções (Com tipos primitivos estritos)
+        # Linha de Devoluções (go.Scatter NÃO aceita textangle - removido)
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=eixo_x,
@@ -65,7 +64,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
                 text=labels_dev,
                 textfont=dict(color="#d90429", size=11),
                 textposition="bottom center",
-                textangle=0,
                 yaxis="y2",
             )
         )
@@ -74,7 +72,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             template="plotly_white",
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#000000", size=13),
+            font=dict(color="#000000", size=13, family="Arial"),
             margin=dict(l=65, r=65, t=75, b=65),
             height=640,
             bargap=0.15,
@@ -111,4 +109,5 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
         st.plotly_chart(fig_fat_solo, use_container_width=True)
 
+    st.divider()
     st.divider()
