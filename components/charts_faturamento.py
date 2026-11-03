@@ -48,7 +48,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             )
         )
 
-        # Linha de Devoluções (CORRIGIDO: family='Arial')
+        # Linha de Devoluções (Removido o parâmetro cliponaxis incorreto do Scatter)
         fig_fat_solo.add_trace(
             go.Scatter(
                 x=df_filtrado["Data_Str"],
@@ -62,7 +62,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
                 textposition="bottom center",
                 textangle=0,
                 yaxis="y2",
-                cliponaxis=False,
             )
         )
 
