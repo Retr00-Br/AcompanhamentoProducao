@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Consolida os dados integrando o SKU real da base sem gargalos de memória."""
+    """Unifica os dados integrando a quantidade de SKUs sem sobrescrever valores."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -34,7 +34,7 @@ def build_processed_dataset():
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # 1. Base Produção (PVs + Status + SKUs)
+    # 1. Base Produção (PVs + Status + SKUs reais)
     df_diario = df_prod_tratado.copy()
     df_diario.rename(
         columns={
@@ -58,7 +58,7 @@ def build_processed_dataset():
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # 4. Fretes Terceirizados
+    # 4. Frete Terceirizado
     if not df_frete_tratado.empty and "Total_Frete" not in df_diario.columns:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")
@@ -81,13 +81,6 @@ def build_processed_dataset():
 def main():
     ui = DashboardUI()
     ui.render_header()
-
-    # Botão de emergência na barra lateral para limpar cache caso necessário
-    with st.sidebar:
-        st.markdown("### ⚙️ Gestão de Cache")
-        if st.button("🔄 Limpar Cache e Forçar Atualização"):
-            st.cache_data.clear()
-            st.rerun()
 
     os.makedirs("./data/", exist_ok=True)
     df_diario, df_fat_detalhado = build_processed_dataset()

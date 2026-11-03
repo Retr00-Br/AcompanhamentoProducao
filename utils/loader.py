@@ -5,14 +5,14 @@ import streamlit as st
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_treated_data_cached():
-    """Lê as abas tratadas e extrai a soma real de SKUs sem travar o frontend."""
+    """Lê as abas tratadas e extrai os SKUs reais da aba DadosBrutos sem travar o app."""
     data_dir = "./data/"
 
     def get_path(filename):
         p = os.path.join(data_dir, filename)
         return p if os.path.exists(p) else (filename if os.path.exists(filename) else None)
 
-    # 1. Produção: LimpezaDados + DadosBacklogXSaudavel
+    # 1. Produção: LimpezaDados + DadosBacklogXSaudavel + SKUs reais
     path_prod = get_path("DadosProducao.xlsx")
     if path_prod:
         try:
@@ -24,19 +24,24 @@ def load_treated_data_cached():
 
             df_prod_base = pd.merge(df_limpeza, df_status, on="DATA", how="outer")
 
-            # Leitura isolada apenas da coluna SKU'S
-            df_brutos = pd.read_excel(path_prod, sheet_name="DadosBrutos", usecols=["DATA", "SKU'S"])
-            df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce")
-            df_brutos["SKU'S"] = pd.to_numeric(df_brutos["SKU'S"], errors="coerce").fillna(0)
+            # Leitura da coluna real de SKUs da aba DadosBrutos
+            df_brutos = pd.read_excel(path_prod, sheet_name="DadosBrutos")
+            col_sku = "SKU'S" if "SKU'S" in df_brutos.columns else ("SKU" if "SKU" in df_brutos.columns else None)
 
-            df_sku_agg = df_brutos.groupby("DATA")["SKU'S"].sum().reset_index(name="Total_SKUs")
-            df_prod_tratado = pd.merge(df_prod_base, df_sku_agg, on="DATA", how="left").fillna({"Total_SKUs": 0})
+            if col_sku:
+                df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce")
+                df_brutos[col_sku] = pd.to_numeric(df_brutos[col_sku], errors="coerce").fillna(0)
+                df_sku_agg = df_brutos.groupby("DATA")[col_sku].sum().reset_index(name="Total_SKUs")
+                df_prod_tratado = pd.merge(df_prod_base, df_sku_agg, on="DATA", how="left").fillna({"Total_SKUs": 0})
+            else:
+                df_prod_base["Total_SKUs"] = 0
+                df_prod_tratado = df_prod_base
         except Exception:
             df_prod_tratado = pd.DataFrame(columns=["DATA", "Quantidade", "Saudavel", "Backlog", "Total_SKUs"])
     else:
         df_prod_tratado = pd.DataFrame(columns=["DATA", "Quantidade", "Saudavel", "Backlog", "Total_SKUs"])
 
-    # 2. Romaneios
+    # 2. Romaneios (Expedições)
     path_rom = get_path("DadosRomaneios.xlsx")
     if path_rom:
         try:
@@ -47,7 +52,7 @@ def load_treated_data_cached():
     else:
         df_rom_tratado = pd.DataFrame(columns=["DATA", "Qtd. Expedição"])
 
-    # 3. Faturamento
+    # 3. Faturamento por Cliente e Faturamento Bruto
     path_fat = get_path("DadosFaturamento.xlsx")
     if path_fat:
         try:
@@ -60,13 +65,16 @@ def load_treated_data_cached():
         df_fat_detalhado = pd.DataFrame()
         df_fat_bruto_raw = pd.DataFrame()
 
-    # 4. Fretes Terceirizados
+    # 4. Fretes Terceirizados (Aba 26 - Soma da Coluna M)
     path_frete = get_path("SOLICITACAO TERCEIROS.xlsx")
     if path_frete:
         try:
             df_frete_tratado = pd.read_excel(path_frete, sheet_name="26")
         except Exception:
-            df_frete_tratado = pd.DataFrame()
+            try:
+                df_frete_tratado = pd.read_excel(path_frete, sheet_name=0)
+            except Exception:
+                df_frete_tratado = pd.DataFrame()
 
         if not df_frete_tratado.empty and "Data da solicitação" in df_frete_tratado.columns:
             df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["Data da solicitação"], errors="coerce")
