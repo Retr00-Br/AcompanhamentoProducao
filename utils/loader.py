@@ -5,7 +5,7 @@ import streamlit as st
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_treated_data_cached():
-    """Lê as abas tratadas e extrai os SKUs de forma segura e leve."""
+    """Lê as abas tratadas e extrai a soma real de SKUs sem travar o frontend."""
     data_dir = "./data/"
 
     def get_path(filename):
@@ -24,7 +24,7 @@ def load_treated_data_cached():
 
             df_prod_base = pd.merge(df_limpeza, df_status, on="DATA", how="outer")
 
-            # Leitura isolada e otimizada dos SKUs da aba DadosBrutos
+            # Leitura isolada apenas da coluna SKU'S
             df_brutos = pd.read_excel(path_prod, sheet_name="DadosBrutos", usecols=["DATA", "SKU'S"])
             df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce")
             df_brutos["SKU'S"] = pd.to_numeric(df_brutos["SKU'S"], errors="coerce").fillna(0)
@@ -36,7 +36,7 @@ def load_treated_data_cached():
     else:
         df_prod_tratado = pd.DataFrame(columns=["DATA", "Quantidade", "Saudavel", "Backlog", "Total_SKUs"])
 
-    # 2. Romaneios (Expedições)
+    # 2. Romaneios
     path_rom = get_path("DadosRomaneios.xlsx")
     if path_rom:
         try:
@@ -60,16 +60,13 @@ def load_treated_data_cached():
         df_fat_detalhado = pd.DataFrame()
         df_fat_bruto_raw = pd.DataFrame()
 
-    # 4. Fretes Terceirizados (Aba 26)
+    # 4. Fretes Terceirizados
     path_frete = get_path("SOLICITACAO TERCEIROS.xlsx")
     if path_frete:
         try:
             df_frete_tratado = pd.read_excel(path_frete, sheet_name="26")
         except Exception:
-            try:
-                df_frete_tratado = pd.read_excel(path_frete, sheet_name=0)
-            except Exception:
-                df_frete_tratado = pd.DataFrame()
+            df_frete_tratado = pd.DataFrame()
 
         if not df_frete_tratado.empty and "Data da solicitação" in df_frete_tratado.columns:
             df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["Data da solicitação"], errors="coerce")
