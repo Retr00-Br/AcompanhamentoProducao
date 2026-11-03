@@ -8,6 +8,7 @@ from components.ui_config import DashboardUI
 from components.kpis import render_kpis_gerais, render_kpis_medias
 from components.charts_faturamento import render_secao_faturamento
 from components.charts_producao import render_graficos_producao
+from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 
 st.set_page_config(
@@ -29,6 +30,7 @@ def main():
         df_rom_tratado,
         df_fat_detalhado,
         df_fat_bruto_raw,
+        df_frete_raw,
     ) = loader.load_all_data()
 
     if df_prod_tratado is None or df_rom_tratado is None:
@@ -37,7 +39,7 @@ def main():
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # Tratamento de Produção
+    # Tratamento da Produção
     df_p = df_prod_tratado.copy()
     col_p_data = "DATA" if "DATA" in df_p.columns else df_p.columns[0]
     col_p_qtd = "Quantidade" if "Quantidade" in df_p.columns else df_p.columns[1]
@@ -89,6 +91,15 @@ def main():
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
+    # Merge da Planilha de Frete (Solicitações Terceirizadas)
+    if df_frete_raw is not None and not df_frete_raw.empty:
+        df_fr = df_frete_raw.dropna(subset=["Data da solicitação"]).copy()
+        df_fr["DATA"] = pd.to_datetime(df_fr["Data da solicitação"], errors="coerce")
+        df_frete_agg = df_fr.groupby("DATA")["Valor Total Frete"].sum().reset_index(name="Total_Frete")
+        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
+    else:
+        df_diario["Total_Frete"] = 0.0
+
     df_diario = df_diario.sort_values("DATA").reset_index(drop=True)
 
     # Filtro Temporal
@@ -128,11 +139,12 @@ def main():
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    # Execução sequencial dos componentes modulares
+    # Renderização da Aplicação
     render_kpis_gerais(df_filtrado)
     render_secao_faturamento(df_filtrado, unidade_selecionada)
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
+    render_secao_frete(df_filtrado, col_fat_ativa)
     render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
     render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
 

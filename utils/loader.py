@@ -55,10 +55,14 @@ class DataLoader:
 
         df_fat_bruto_raw = self.read_dataframe("DadosFaturamento.xlsx", "FaturamentoBruto", header=None)
 
+        # Leitura da planilha de solicitações de frete terceirizado
+        df_frete_raw = self.read_dataframe("SOLICITACAO TERCEIROS.xlsx", "2026")
+
         return (
             df_prod_bruto,
             df_prod_tratado,
             df_rom_tratado,
             df_fat_detalhado,
             df_fat_bruto_raw,
+            df_frete_raw,
         )

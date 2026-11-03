@@ -18,7 +18,7 @@ def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
         return
 
     col_fat_ativa = f"{unidade_selecionada}_Fat"
-    fat_total = df_filtrado[col_fat_ativa].sum() if col_fat_ativa in df_filtrado.columns else 0.0
+    fat_total = float(df_filtrado[col_fat_ativa].sum()) if col_fat_ativa in df_filtrado.columns else 0.0
     dias_com_fat = len(df_filtrado[df_filtrado[col_fat_ativa] > 0])
     media_fat_diaria = fat_total / (dias_com_fat if dias_com_fat > 0 else 1)
 
