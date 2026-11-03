@@ -8,8 +8,8 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    fat_total = df_filtrado[col_fat_ativa].sum() if col_fat_ativa in df_filtrado.columns else 0.0
-    dev_total = df_filtrado[col_dev_ativa].sum() if col_dev_ativa in df_filtrado.columns else 0.0
+    fat_total = float(df_filtrado[col_fat_ativa].sum()) if col_fat_ativa in df_filtrado.columns else 0.0
+    dev_total = float(df_filtrado[col_dev_ativa].sum()) if col_dev_ativa in df_filtrado.columns else 0.0
 
     dias_com_fat = len(df_filtrado[df_filtrado[col_fat_ativa] > 0])
     divisor = dias_com_fat if dias_com_fat > 0 else 1
@@ -27,17 +27,22 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     if not df_filtrado.empty:
         fig_fat_solo = go.Figure()
 
-        labels_fat = [fmt_brl(v) for v in df_filtrado[col_fat_ativa]]
-        labels_dev = [fmt_brl(v) if v > 0 else "" for v in df_filtrado[col_dev_ativa]]
+        # Conversão explícita dos dados para listas nativas do Python
+        eixo_x = df_filtrado["Data_Str"].astype(str).tolist()
+        y_fat = df_filtrado[col_fat_ativa].astype(float).tolist()
+        y_dev = df_filtrado[col_dev_ativa].astype(float).tolist()
 
-        max_fat = df_filtrado[col_fat_ativa].max() if not df_filtrado[col_fat_ativa].empty else 1000
-        max_dev = df_filtrado[col_dev_ativa].max() if not df_filtrado[col_dev_ativa].empty else 1000
+        labels_fat = [fmt_brl(v) for v in y_fat]
+        labels_dev = [fmt_brl(v) if v > 0 else "" for v in y_dev]
+
+        max_fat = max(y_fat) if y_fat else 1000.0
+        max_dev = max(y_dev) if y_dev else 1000.0
 
         # Barras de Faturamento
         fig_fat_solo.add_trace(
             go.Bar(
-                x=df_filtrado["Data_Str"],
-                y=df_filtrado[col_fat_ativa],
+                x=eixo_x,
+                y=y_fat,
                 name="Faturamento (R$)",
                 marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
                 text=labels_fat,
@@ -48,17 +53,17 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             )
         )
 
-        # Linha de Devoluções (Removido o parâmetro cliponaxis incorreto do Scatter)
+        # Linha de Devoluções (Com tipos primitivos estritos)
         fig_fat_solo.add_trace(
             go.Scatter(
-                x=df_filtrado["Data_Str"],
-                y=df_filtrado[col_dev_ativa],
+                x=eixo_x,
+                y=y_dev,
                 name="Devoluções (R$)",
                 mode="lines+markers+text",
                 marker=dict(color="#d90429", size=7, symbol="circle"),
                 line=dict(color="#d90429", width=2.0),
                 text=labels_dev,
-                textfont=dict(color="#d90429", size=11, family="Arial"),
+                textfont=dict(color="#d90429", size=11),
                 textposition="bottom center",
                 textangle=0,
                 yaxis="y2",
@@ -69,7 +74,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             template="plotly_white",
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#000000", size=13, family="Arial"),
+            font=dict(color="#000000", size=13),
             margin=dict(l=65, r=65, t=75, b=65),
             height=640,
             bargap=0.15,
