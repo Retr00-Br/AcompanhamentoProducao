@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from utils.loader import DataLoader
+from utils.loader import load_all_raw_data_cached
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
 from components.kpis import render_kpis_gerais, render_kpis_medias
@@ -18,12 +18,9 @@ st.set_page_config(
 )
 
 
-def main():
-    ui = DashboardUI()
-    ui.render_header()
-
-    os.makedirs("./data/", exist_ok=True)
-    loader = DataLoader()
+@st.cache_data(ttl=3600, show_spinner=False)
+def build_processed_dataset():
+    """Processa, une e indexa todos os DataFrames de produção, faturamento e fretes em cache."""
     (
         df_prod_bruto,
         df_prod_tratado,
@@ -31,15 +28,14 @@ def main():
         df_fat_detalhado,
         df_fat_bruto_raw,
         df_frete_raw,
-    ) = loader.load_all_data()
+    ) = load_all_raw_data_cached()
 
     if df_prod_tratado is None or df_rom_tratado is None:
-        st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
-        st.stop()
+        return None, None
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # Tratamento da Produção
+    # 1. Tratamento da Produção
     df_p = df_prod_tratado.copy()
     col_p_data = "DATA" if "DATA" in df_p.columns else df_p.columns[0]
     col_p_qtd = "Quantidade" if "Quantidade" in df_p.columns else df_p.columns[1]
@@ -80,7 +76,7 @@ def main():
         df_diario["SAUDAVEL"] = 0
         df_diario["BACKLOG"] = 0
 
-    # Tratamento de Romaneios
+    # 2. Tratamento de Romaneios
     df_r = df_rom_tratado.copy()
     col_r_data = (
         "Dt. Romaneio"
@@ -101,15 +97,27 @@ def main():
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # Tratamento de Frete (Consolidado)
+    # 3. Tratamento de Frete
     if df_frete_raw is not None and not df_frete_raw.empty:
         df_frete_agg = df_frete_raw.groupby("DATA")["Valor Total Frete"].sum().reset_index(name="Total_Frete")
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
     else:
         df_diario["Total_Frete"] = 0.0
 
-    # Limpeza final de datas nulas e ordenação
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
+    return df_diario, df_fat_detalhado
+
+
+def main():
+    ui = DashboardUI()
+    ui.render_header()
+
+    os.makedirs("./data/", exist_ok=True)
+    df_diario, df_fat_detalhado = build_processed_dataset()
+
+    if df_diario is None:
+        st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
+        st.stop()
 
     # -------------------------------------------------------------
     # SELEÇÃO DO FILTRO TEMPORAL
@@ -124,7 +132,6 @@ def main():
             horizontal=True,
         )
 
-    # Definimos as datas limites reais da operação principal (ex: Outubro)
     df_valido = df_diario[df_diario["Total_PVs"] > 0] if not df_diario[df_diario["Total_PVs"] > 0].empty else df_diario
     min_date = df_valido["DATA"].min().date()
     max_date = df_valido["DATA"].max().date()
@@ -156,7 +163,7 @@ def main():
             dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
 
-    # CORREÇÃO CHAVE: Aplicação estrita do filtro temporal
+    # Filtro rápido focado no intervalo selecionado
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
@@ -176,7 +183,7 @@ def main():
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    # Execução encadeada dos componentes modulares
+    # Renderização sequencial extremamente rápida (sem reload de IO)
     render_kpis_gerais(df_filtrado)
     render_secao_faturamento(df_filtrado, unidade_selecionada)
     render_kpis_medias(df_filtrado, unidade_selecionada)
