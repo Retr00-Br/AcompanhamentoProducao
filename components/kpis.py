@@ -8,7 +8,7 @@ def render_kpis_gerais(df_filtrado: pd.DataFrame):
     k1.metric("📄 Total PVs", int(df_filtrado["Total_PVs"].sum()))
     k2.metric("✅ Saudável", int(df_filtrado["SAUDAVEL"].sum()))
     k3.metric("⚠️ Backlog", int(df_filtrado["BACKLOG"].sum()))
-    k4.metric("📦 Total SKUs", int(df_filtrado["Total_SKUs"].sum()))
+    k4.metric("📦 Total SKUs/Linhas", int(df_filtrado["Total_SKUs"].sum()))
     st.divider()
 
 
@@ -35,7 +35,7 @@ def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
     pm1, pm2, pm3, pm4, pm5 = st.columns(5)
     pm1.metric("📈 Média Saudável/Dia", f"{media_saudavel:.1f}")
     pm2.metric("⚠️ Média Backlog/Dia", f"{media_backlog:.1f}")
-    pm3.metric("📦 Média SKUs/Dia", f"{media_skus:.1f}")
+    pm3.metric("📦 Média SKUs/Linhas/Dia", f"{media_skus:.1f}")
     pm4.metric(
         "💵 Média Faturada/Dia",
         f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
