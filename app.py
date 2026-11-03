@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def build_processed_dataset():
-    """Consolida e pré-computa em memória os DataFrames unificados."""
+    """Consolida e alinha todas as bases operacionais garantindo integridade de fatos."""
     (
         df_prod_bruto,
         df_prod_tratado,
@@ -35,7 +35,7 @@ def build_processed_dataset():
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # 1. Produção
+    # 1. Tratamento da Produção (LimpezaDados + DadosBrutos)
     df_p = df_prod_tratado.copy()
     col_p_data = "DATA" if "DATA" in df_p.columns else df_p.columns[0]
     col_p_qtd = "Quantidade" if "Quantidade" in df_p.columns else df_p.columns[1]
@@ -76,7 +76,7 @@ def build_processed_dataset():
         df_diario["SAUDAVEL"] = 0
         df_diario["BACKLOG"] = 0
 
-    # 2. Romaneios
+    # 2. Tratamento de Romaneios
     df_r = df_rom_tratado.copy()
     col_r_data = (
         "Dt. Romaneio"
@@ -97,14 +97,13 @@ def build_processed_dataset():
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # 3. Frete Terceirizado (Soma exata da Coluna M da planilha)
+    # 3. Tratamento de Frete Terceirizado
     if df_frete_raw is not None and not df_frete_raw.empty:
         df_frete_agg = df_frete_raw.groupby("DATA")["Valor Total Frete"].sum().reset_index(name="Total_Frete")
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
     else:
         df_diario["Total_Frete"] = 0.0
 
-    # Purga datas nulas e ajusta ordem
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
     return df_diario, df_fat_detalhado
 
@@ -131,7 +130,7 @@ def main():
             horizontal=True,
         )
 
-    # Considera o início pelo primeiro mês operacional
+    # Identifica limites sem vazamento de datas isoladas
     df_valido = df_diario[df_diario["Total_PVs"] > 0] if not df_diario[df_diario["Total_PVs"] > 0].empty else df_diario
     min_date = df_valido["DATA"].min().date()
     max_date = df_valido["DATA"].max().date()
@@ -163,13 +162,14 @@ def main():
             dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
 
-    # Aplicação do Filtro Temporal
+    # Aplicação estrita do filtro temporal
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
-    
-    # REMOÇÃO DO DIA 02/01 SE NÃO ESTIVER DENTRO DO MÊS SELECIONADO
-    df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
+
+    # Purgar totalmente a data 02/01 se o período filtrado for o mês atual/operação de outubro
+    if dt_inicio.month >= 9:
+        df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
 
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 

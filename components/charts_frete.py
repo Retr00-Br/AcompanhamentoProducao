@@ -14,7 +14,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     df_frete_ativo = df_filtrado.copy()
 
-    # CÁLCULO PONDERADO REAL: Soma da Coluna M / Soma da Coluna E (Faturamento)
+    # CÁLCULO PONDERADO REAL: (Soma da Coluna M / Faturamento Total Acumulado) * 100
     fat_total = float(df_frete_ativo[col_fat_ativa].sum()) if col_fat_ativa in df_frete_ativo.columns else 0.0
     frete_total = float(df_frete_ativo["Total_Frete"].sum())
 
@@ -23,10 +23,9 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     divisor = dias_com_frete if dias_com_frete > 0 else 1
     media_frete_diaria = frete_total / divisor
 
-    # KPI de Porcentagem Ponderada Real do Frete
     pct_frete_acumulado = (frete_total / fat_total * 100) if fat_total > 0 else 0.0
 
-    # KPIs Principais
+    # KPIs Principais (Acumulado de Outubro: 1,13%)
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(
         "💵 Frete Total Acumulado (Coluna M)",
@@ -47,7 +46,6 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     y_fat = df_frete_ativo[col_fat_ativa].astype(float).tolist()
     y_frete = df_frete_ativo["Total_Frete"].astype(float).tolist()
 
-    # Cálculo da Porcentagem Diária (% Frete / Faturamento do Dia)
     y_pct_diario = [
         (frete / fat * 100) if fat > 0 else 0.0
         for frete, fat in zip(y_frete, y_fat)
@@ -57,9 +55,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     max_frete = max(y_frete) if y_frete else 1000.0
     max_pct = max(y_pct_diario) if y_pct_diario else 10.0
 
-    # -------------------------------------------------------------
     # GRÁFICO 1: FATURAMENTO VS FRETE POR DIA
-    # -------------------------------------------------------------
     st.subheader("📊 Faturamento Diário vs. Valor do Frete Terceirizado")
     fig_fat_frete = go.Figure()
 
@@ -119,9 +115,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     st.plotly_chart(fig_fat_frete, use_container_width=True)
 
-    # -------------------------------------------------------------
     # GRÁFICO 2: CUSTO TOTAL DE FRETE POR DIA (R$)
-    # -------------------------------------------------------------
     st.subheader("📦 Custo Total de Frete por Dia (R$)")
 
     fig_frete_dia = go.Figure(
@@ -157,9 +151,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     st.plotly_chart(fig_frete_dia, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # GRÁFICO 3 (NOVO): PORCENTAGEM DE FRETE POR DIA (% Frete / Faturamento)
-    # -------------------------------------------------------------
+    # GRÁFICO 3: PORCENTAGEM DE FRETE POR DIA (% Frete / Faturamento)
     st.subheader("📈 Porcentagem (%) de Frete sobre o Faturamento Diário")
 
     fig_pct_frete = go.Figure(
