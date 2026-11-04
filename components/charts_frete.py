@@ -105,8 +105,8 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
                 name="Faturamento (R$)",
                 marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
                 text=[fmt_executivo_brl(v) for v in y_fat],
-                textfont=dict(color="#000000", size=10, family="Arial Black"),
-                textangle=-90,
+                textfont=dict(color="#000000", size=11, family="Arial Black"),
+                textangle=0,  # Valores na horizontal (retos)
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",

@@ -47,7 +47,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
     fig = go.Figure()
 
-    # Barras de Faturamento com os valores EXECUTIVOS visíveis no topo
+    # Barras de Faturamento com os valores RETOS no topo (textangle=0) e fonte legivel
     fig.add_trace(
         go.Bar(
             x=eixo_x,
@@ -55,23 +55,26 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             name="Faturamento (R$)",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
             text=[fmt_executivo_brl(v) for v in y_fat],
-            textfont=dict(color="#000000", size=10, family="Arial Black"),
-            textangle=-90,
+            textfont=dict(color="#000000", size=11, family="Arial Black"),
+            textangle=0,  # Valores na horizontal (retos)
             textposition="outside",
             cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
 
-    # Linha de Devoluções
+    # Linha de Devoluções COM OS VALORES EXIBIDOS ACIMA DOS PONTOS (mode='lines+markers+text')
     fig.add_trace(
         go.Scatter(
             x=eixo_x,
             y=y_dev,
             name="Devoluções (R$)",
-            mode="lines+markers",
-            marker=dict(color="#000000", size=6, symbol="square"),
+            mode="lines+markers+text",
+            marker=dict(color="#000000", size=7, symbol="square"),
             line=dict(color="#000000", width=2.0),
+            text=[fmt_executivo_brl(v) if v > 0 else "" for v in y_dev],
+            textfont=dict(color="#000000", size=10, family="Arial Black"),
+            textposition="top center",
             hovertemplate="<b>Data: %{x}</b><br>Devolução: R$ %{y:,.2f}<extra></extra>",
             yaxis="y2",
         )
@@ -83,14 +86,14 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=12, family="Arial"),
         margin=dict(l=50, r=60, t=70, b=60),
-        height=550,
+        height=560,
         bargap=0.18,
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             tickprefix="R$ ",
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max_fat * 1.45],  # Espaço para acomodar os rótulos sem cortar no topo
+            range=[0, max_fat * 1.35],
         ),
         yaxis2=dict(
             title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=13, color="#000000")),
@@ -98,7 +101,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             side="right",
             tickprefix="R$ ",
             showgrid=False,
-            range=[0, max(max_dev * 1.30, 1000.0)],
+            range=[0, max(max_dev * 1.35, 1000.0)],
         ),
         xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
         legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
