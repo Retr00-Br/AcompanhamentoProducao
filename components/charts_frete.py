@@ -97,7 +97,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
 
         fig_relacao = go.Figure()
 
-        # Barras de Faturamento com os valores EXECUTIVOS (k/M) visíveis na vertical
+        # Barras de Faturamento com os valores RETOS (textangle=0) e limpos
         fig_relacao.add_trace(
             go.Bar(
                 x=eixo_x,
@@ -106,7 +106,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
                 marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
                 text=[fmt_executivo_brl(v) for v in y_fat],
                 textfont=dict(color="#000000", size=11, family="Arial Black"),
-                textangle=0,  # Valores na horizontal (retos)
+                textangle=0,
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
@@ -159,7 +159,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
 
         st.plotly_chart(fig_relacao, use_container_width=True)
 
-    # 3. GRÁFICOS DE PIZZA (DISTRIBUIÇÃO E PARTICIPAÇÃO)
+    # 3. GRÁFICOS DE PIZZA (DISTRIBUIÇÃO E PARTICIPAÇÃO PADRONIZADOS - NOME + PARTICIPAÇÃO)
     df_mnop = load_resumo_terceiros_MNOP()
     if not df_mnop.empty:
         df_corpo = df_mnop[df_mnop["Transportadora"].astype(str).str.strip().str.upper() != "TOTAL GERAL"].copy()
@@ -201,10 +201,10 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
                     labels=df_pizza_final["Transportadora"],
                     values=df_pizza_final["Valor_Frete"],
                     hole=0.40,
-                    textinfo="percent",
+                    textinfo="label+percent",
                     textposition="inside",
                     hovertemplate="<b>%{label}</b><br>Frete: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>",
-                    textfont=dict(size=12, color="#ffffff"),
+                    textfont=dict(size=11, color="#ffffff"),
                     marker=dict(line=dict(color="#ffffff", width=2)),
                 )
             )
