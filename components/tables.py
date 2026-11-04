@@ -8,12 +8,11 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     st.markdown("---")
     st.markdown("### 🏆 Top Clientes por Faturamento Monetário")
 
-    if df_fat_detalhado.empty:
+    if df_fat_detalhado is None or df_fat_detalhado.empty:
         st.info("Dados de faturamento por cliente indisponíveis.")
         return
 
     df_cli = df_fat_detalhado.copy()
-
     colunas_3 = [c for c in ["Filial", "Cliente", "R$ Fatur."] if c in df_cli.columns]
     df_cli = df_cli[colunas_3].copy()
 
@@ -25,16 +24,16 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         st.info("Nenhum registro para a filial selecionada.")
         return
 
-    # Agrupar por cliente e pegar os 12 maiores
+    # Agrupar por cliente e pegar os 12 maiores acumulados
     df_chart_cli = (
         df_cli.groupby("Cliente")["R$ Fatur."]
         .sum()
         .reset_index()
-        .sort_values(by="R$ Fatur.", ascending=True)  # Ordem ascendente para o gráfico horizontal
+        .sort_values(by="R$ Fatur.", ascending=True)
         .tail(12)
     )
 
-    # 📊 GRÁFICO HORIZONTAL DE BARRAS DE FATURAMENTO POR CLIENTE
+    # Gráfico de barras horizontais limpo e legível
     fig_cli = go.Figure(
         go.Bar(
             y=df_chart_cli["Cliente"],
@@ -42,7 +41,7 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
             orientation="h",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
             text=[fmt_brl(v) for v in df_chart_cli["R$ Fatur."]],
-            textfont=dict(color="#000000", size=11, family="Arial"),
+            textfont=dict(color="#000000", size=11, family="Arial Black"),
             textposition="outside",
             cliponaxis=False,
         )
@@ -53,13 +52,14 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=12, family="Arial"),
-        margin=dict(l=150, r=80, t=30, b=40),
-        height=520,
+        margin=dict(l=180, r=90, t=30, b=40),
+        height=550,
         xaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             tickprefix="R$ ",
             showgrid=True,
             gridcolor="#e9ecef",
+            range=[0, max(df_chart_cli["R$ Fatur."]) * 1.25],
         ),
         yaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
     )
@@ -70,6 +70,10 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
 def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col_dev_ativa: str):
     st.markdown("---")
     st.markdown("### 📑 Tabela Consolidada Diária de Operações")
+
+    if df_filtrado is empty if isinstance(df_filtrado, pd.DataFrame) else True:
+        st.info("Sem registros para exibição da tabela consolidada.")
+        return
 
     if df_filtrado.empty:
         st.info("Sem registros para exibição da tabela consolidada.")

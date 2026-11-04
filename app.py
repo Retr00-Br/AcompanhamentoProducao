@@ -85,8 +85,10 @@ def main():
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
         st.stop()
 
-    # FILTRO TEMPORAL
-    st.subheader("📅 Filtro Temporal de Análise Operacional")
+    # -------------------------------------------------------------
+    # 📅 FILTRO TEMPORAL GERAL (Faturamento, Produção e KPIs Gerais)
+    # -------------------------------------------------------------
+    st.subheader("📅 Filtro Temporal Geral (Faturamento & Produção)")
     col_ft1, col_ft2 = st.columns([1.5, 3])
 
     with col_ft1:
@@ -94,6 +96,7 @@ def main():
             "Filtrar período por:",
             ["Intervalo de Calendário", "Por Mês", "Por Semana do Ano"],
             horizontal=True,
+            key="filtro_tempo_geral_radio",
         )
 
     min_date = df_diario["DATA"].min().date()
@@ -106,12 +109,13 @@ def main():
                 value=(min_date, max_date),
                 min_value=min_date,
                 max_value=max_date,
+                key="filtro_tempo_geral_dates",
             )
             dt_inicio, dt_fim = data_sel if isinstance(data_sel, tuple) and len(data_sel) == 2 else (min_date, max_date)
         elif tipo_filtro == "Por Mês":
             df_diario["Mes_Ano"] = df_diario["DATA"].dt.strftime("%Y-%m")
             meses = sorted(df_diario["Mes_Ano"].unique().tolist())
-            mes_sel = st.selectbox("Selecione o Mês:", meses, index=len(meses) - 1)
+            mes_sel = st.selectbox("Selecione o Mês:", meses, index=len(meses) - 1, key="filtro_tempo_geral_mes")
             dt_inicio = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].max().date()
         else:
@@ -122,18 +126,17 @@ def main():
                 + df_diario["DATA"].dt.year.astype(str)
             )
             semanas = df_diario["Semana"].unique().tolist()
-            semana_sel = st.selectbox("Selecione a Semana:", semanas, index=len(semanas) - 1)
+            semana_sel = st.selectbox("Selecione a Semana:", semanas, index=len(semanas) - 1, key="filtro_tempo_geral_semana")
             dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
 
-    # Aplicação do Filtro Temporal
+    # Aplicação do Filtro Temporal Geral
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
 
     # Purga da data de teste 02/01
     df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
-
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
     # Seletor de Filial
@@ -144,18 +147,28 @@ def main():
         "0103 - Filial CP",
         "0104 - Filial SBC",
     ]
-    unidade_selecionada = st.selectbox("🏢 Selecione a Unidade / Filial:", opcoes_filiais, index=0)
+    unidade_selecionada = st.selectbox("🏢 Selecione a Unidade / Filial:", opcoes_filiais, index=0, key="unidade_sel_main")
 
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    # Renderização da Aplicação
+    # 1. KPIs Gerais
     render_kpis_gerais(df_filtrado)
+    
+    # 2. Seção de Faturamento Monetário
     render_secao_faturamento(df_filtrado, unidade_selecionada)
+    
+    # 3. 🎯 GRÁFICO DE FATURAMENTO POR CLIENTE (Posicionado logo abaixo do Faturamento)
+    render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
+
+    # 4. Seção de Produção e Expedição
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
+
+    # 5. 🚚 SEÇÃO DE FRETE TERCEIRIZADO (Possui seu próprio filtro temporal independente)
     render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
-    render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
+
+    # 6. Tabela Consolidada Operacional
     render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
 
 
