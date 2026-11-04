@@ -5,6 +5,22 @@ from utils.loader import load_resumo_terceiros_MNOP
 from utils.parser import fmt_brl
 
 
+def fmt_executivo_brl(val: float) -> str:
+    """Retorna o valor monetário abreviado para rótulos de gráfico (ex: R$ 457k, R$ 1,5M)."""
+    try:
+        if pd.isna(val) or val <= 0:
+            return ""
+        val = float(val)
+        if val >= 1_000_000:
+            return f"R$ {val / 1_000_000:.1f}M".replace(".", ",")
+        elif val >= 1_000:
+            return f"R$ {val / 1_000:.0f}k"
+        else:
+            return f"R$ {val:.0f}"
+    except Exception:
+        return ""
+
+
 def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_frete_bruto: pd.DataFrame = None):
     st.divider()
     st.markdown("### 🚚 Indicadores & Análise de Frete Terceirizado")
@@ -17,6 +33,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
     if df_frete_base.empty:
         df_frete_base = df_diario_completo.copy()
 
+    # 1. SELETOR DE CALENDÁRIO EXCLUSIVO DA SEÇÃO DE FRETE
     st.markdown("#### 🗓️ Filtro Temporal Exclusivo da Seção de Fretes")
     c_cal1, c_cal2 = st.columns([2, 2])
 
@@ -51,6 +68,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
     df_dias_frete = df_frete_ativo[df_frete_ativo["Total_Frete"] > 0]
     dias_com_frete = len(df_dias_frete)
 
+    # Cards de KPIs
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("💵 Total Frete Acumulado", fmt_brl(frete_total))
     k2.metric("📦 Faturamento Atendido no Período", fmt_brl(fat_total))
@@ -58,6 +76,8 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
     k4.metric("📅 Dias c/ Operação de Frete", f"{dias_com_frete} dias")
 
     st.markdown("---")
+
+    # 2. GRÁFICO DIÁRIO DE RELAÇÃO % FRETE X FATURAMENTO
     st.subheader("📈 Relação Diária: % do Custo de Frete sobre o Faturamento")
 
     df_chart = df_frete_ativo[(df_frete_ativo["Total_Frete"] > 0) | (df_frete_ativo[col_fat] > 0)].copy()
@@ -77,18 +97,23 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
 
         fig_relacao = go.Figure()
 
-        # Barras de Faturamento com Hover Limpo
+        # Barras de Faturamento com os valores EXECUTIVOS (k/M) visíveis na vertical
         fig_relacao.add_trace(
             go.Bar(
                 x=eixo_x,
                 y=y_fat,
                 name="Faturamento (R$)",
                 marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
+                text=[fmt_executivo_brl(v) for v in y_fat],
+                textfont=dict(color="#000000", size=10, family="Arial Black"),
+                textangle=-90,
+                textposition="outside",
+                cliponaxis=False,
                 hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
             )
         )
 
-        # Linha de % de Frete com marcadores de texto em destaque
+        # Linha de % de Frete sobre Faturamento
         fig_relacao.add_trace(
             go.Scatter(
                 x=eixo_x,
@@ -110,15 +135,15 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#000000", size=12, family="Arial"),
-            margin=dict(l=60, r=60, t=50, b=60),
-            height=540,
+            margin=dict(l=60, r=60, t=70, b=60),
+            height=550,
             bargap=0.18,
             yaxis=dict(
                 title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
                 tickprefix="R$ ",
                 showgrid=True,
                 gridcolor="#e9ecef",
-                range=[0, max_fat * 1.20],
+                range=[0, max_fat * 1.45],
             ),
             yaxis2=dict(
                 title=dict(text="<b>% Frete / Faturamento</b>", font=dict(size=13, color="#000000")),
@@ -129,12 +154,12 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
                 range=[0, max(max_pct * 1.35, 10.0)],
             ),
             xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
-            legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
+            legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
         )
 
         st.plotly_chart(fig_relacao, use_container_width=True)
 
-    # Pizzas e Acumulado por Transportadora
+    # 3. GRÁFICOS DE PIZZA (DISTRIBUIÇÃO E PARTICIPAÇÃO)
     df_mnop = load_resumo_terceiros_MNOP()
     if not df_mnop.empty:
         df_corpo = df_mnop[df_mnop["Transportadora"].astype(str).str.strip().str.upper() != "TOTAL GERAL"].copy()
@@ -215,6 +240,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
             )
             st.plotly_chart(fig_pie_pct, use_container_width=True)
 
+        # 4. TOP 10 TRANSPORTADORAS
         st.subheader("🏆 Top 10 Transportadoras: Valor de Frete (R$) & Porcentagem (%)")
         df_top10 = df_corpo.head(10).copy()
         eixo_x_top = df_top10["Transportadora"].tolist()
@@ -281,6 +307,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
 
         st.plotly_chart(fig_top10, use_container_width=True)
 
+        # 5. TABELA DE ACUMULADO GERAL
         st.markdown("---")
         st.markdown("#### 📊 Acumulado Geral por Transportadora")
         df_exibicao = pd.concat([df_corpo, df_total], ignore_index=True)
@@ -296,35 +323,4 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
             use_container_width=True,
             hide_index=True,
             height=min(600, len(df_final) * 38 + 40),
-        )
-        def fmt_executivo_brl(val: float) -> str:
-    """Retorna o valor monetário abreviado para rótulos de gráfico (ex: R$ 457k, R$ 1,5M)."""
-    try:
-        if pd.isna(val) or val <= 0:
-            return ""
-        val = float(val)
-        if val >= 1_000_000:
-            return f"R$ {val / 1_000_000:.1f}M".replace(".", ",")
-        elif val >= 1_000:
-            return f"R$ {val / 1_000:.0f}k"
-        else:
-            return f"R$ {val:.0f}"
-    except Exception:
-        return ""
-
-
-# Dentro da função render_secao_frete, no grafico fig_relacao:
-        fig_relacao.add_trace(
-            go.Bar(
-                x=eixo_x,
-                y=y_fat,
-                name="Faturamento (R$)",
-                marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
-                text=[fmt_executivo_brl(v) for v in y_fat],
-                textfont=dict(color="#000000", size=10, family="Arial Black"),
-                textangle=-90,
-                textposition="outside",
-                cliponaxis=False,
-                hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
-            )
         )
