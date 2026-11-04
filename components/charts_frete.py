@@ -53,7 +53,9 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     max_frete = max(y_frete) if y_frete else 1000.0
     max_pct = max(y_pct_diario) if y_pct_diario else 10.0
 
-    # GRÁFICO 1: FATURAMENTO VS FRETE
+    # -------------------------------------------------------------
+    # GRÁFICO DIÁRIO: FATURAMENTO VS FRETE (SEM SOBREPOSIÇÃO)
+    # -------------------------------------------------------------
     st.subheader("📊 Faturamento Diário vs. Valor do Frete Terceirizado")
     fig_fat_frete = go.Figure()
 
@@ -64,8 +66,9 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             name="Faturamento (R$)",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
             text=[fmt_brl(v) for v in y_fat],
-            textfont=dict(color="#000000", size=11),
+            textfont=dict(color="#000000", size=11, family="Arial"),
             textposition="outside",
+            cliponaxis=False,
         )
     )
 
@@ -75,10 +78,10 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             y=y_frete,
             name="Valor Frete (R$)",
             mode="lines+markers+text",
-            marker=dict(color="#c1121f", size=8, symbol="diamond"),
-            line=dict(color="#c1121f", width=2.5),
+            marker=dict(color="#b91c1c", size=8, symbol="diamond"),
+            line=dict(color="#b91c1c", width=2.5),
             text=[f"<b>R$ {v:,.0f}</b>" if v > 0 else "" for v in y_frete],
-            textfont=dict(color="#000000", size=11),  # Texto em preto estrito
+            textfont=dict(color="#000000", size=11, family="Arial"),
             textposition="top center",
             yaxis="y2",
         )
@@ -89,8 +92,8 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=13, family="Arial"),
-        margin=dict(l=65, r=65, t=65, b=65),
-        height=540,
+        margin=dict(l=65, r=65, t=75, b=65),
+        height=560,
         bargap=0.15,
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=14, color="#000000")),
@@ -105,16 +108,18 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             overlaying="y",
             side="right",
             showgrid=False,
-            range=[0, max_frete * 1.50] if max_frete > 0 else None,
+            range=[0, max_frete * 1.85] if max_frete > 0 else None,  # Range expandido anti-colisão
             tickfont=dict(size=12, color="#000000"),
         ),
         xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
-        legend=dict(orientation="h", y=1.08, x=1, xanchor="right", font=dict(size=13, color="#000000")),
+        legend=dict(orientation="h", y=1.10, x=1, xanchor="right", font=dict(size=13, color="#000000")),
     )
 
     st.plotly_chart(fig_fat_frete, use_container_width=True)
 
-    # GRÁFICO 2: CUSTO TOTAL DE FRETE POR DIA (R$)
+    # -------------------------------------------------------------
+    # GRÁFICO CUSTO DE FRETE POR DIA
+    # -------------------------------------------------------------
     st.subheader("📦 Custo Total de Frete por Dia (R$)")
 
     fig_frete_dia = go.Figure(
@@ -124,8 +129,9 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             name="Frete Diário",
             marker=dict(color="#e76f51", line=dict(color="#000000", width=1.0)),
             text=[f"<b>R$ {v:,.0f}</b>" if v > 0 else "" for v in y_frete],
-            textfont=dict(color="#000000", size=11),
+            textfont=dict(color="#000000", size=11, family="Arial"),
             textposition="outside",
+            cliponaxis=False,
         )
     )
 
@@ -150,7 +156,9 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     st.plotly_chart(fig_frete_dia, use_container_width=True)
 
-    # GRÁFICO 3: PORCENTAGEM DE FRETE POR DIA
+    # -------------------------------------------------------------
+    # GRÁFICO PORCENTAGEM DE FRETE POR DIA
+    # -------------------------------------------------------------
     st.subheader("📈 Porcentagem (%) de Frete sobre o Faturamento Diário")
 
     fmt_frete_str = f"R$ {frete_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -172,7 +180,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             marker=dict(color="#d97706", size=8, symbol="circle"),
             line=dict(color="#d97706", width=2.5),
             text=[f"<b>{v:.2f}%</b>" if v > 0 else "" for v in y_pct_diario],
-            textfont=dict(color="#000000", size=11),  # Texto em preto estrito
+            textfont=dict(color="#000000", size=11, family="Arial"),
             textposition="top center",
         )
     )
