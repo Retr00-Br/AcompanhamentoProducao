@@ -13,12 +13,11 @@ def fmt_brl(val: float) -> str:
 
 
 def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
-    """Extrai os dados da aba FaturamentoBruto mapeando as colunas das filiais corretamente."""
+    """Extrai os dados da aba FaturamentoBruto mapeando as colunas e garantindo devoluções em módulo positivo."""
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
     try:
-        # A partir da linha index 2 estão os dados diários
         df = df_raw.iloc[2:].copy()
 
         mapping_cols = {
@@ -40,7 +39,11 @@ def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
 
         for col in df.columns:
             if col != "DATA":
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+                # Se for coluna de devolução, converte para valor positivo absoluto (abs)
+                if "_Dev" in col:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").abs().fillna(0.0)
+                else:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
         return df.dropna(subset=["DATA"]).reset_index(drop=True)
     except Exception:

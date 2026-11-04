@@ -90,7 +90,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
 
     fig_relacao = go.Figure()
 
-    # Barras de Faturamento Monetário com fonte aumentada (size=13)
+# Barras de Faturamento Monetário no gráfico de frete com fonte vertical legível
     fig_relacao.add_trace(
         go.Bar(
             x=eixo_x,
@@ -98,7 +98,8 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
             name="Faturamento (R$)",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
             text=[fmt_brl(v) if v > 0 else "" for v in y_fat],
-            textfont=dict(color="#000000", size=13, family="Arial Black"),  # Fonte aumentada e destacada
+            textfont=dict(color="#000000", size=11, family="Arial Black"),
+            textangle=-90,  # Rotacionado na vertical para perfeita legibilidade
             textposition="outside",
             cliponaxis=False,
         )
