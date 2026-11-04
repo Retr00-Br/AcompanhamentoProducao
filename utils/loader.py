@@ -5,14 +5,22 @@ import streamlit as st
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_treated_data_cached():
-    """Lê todas as planilhas do diretório ./data/ incluindo dados de frete e SKUs reais."""
+    """Lê as planilhas de produção, faturamento, romaneios e fretes."""
     data_dir = "./data/"
 
     def get_path(filename):
-        p = os.path.join(data_dir, filename)
-        return p if os.path.exists(p) else (filename if os.path.exists(filename) else None)
+        paths_to_check = [
+            os.path.join(data_dir, filename),
+            filename,
+            os.path.join(data_dir, filename.upper()),
+            filename.upper(),
+        ]
+        for p in paths_to_check:
+            if os.path.exists(p):
+                return p
+        return None
 
-    # 1. Produção: LimpezaDados + DadosBacklogXSaudavel + SKUs reais
+    # 1. Produção
     path_prod = get_path("DadosProducao.xlsx")
     if path_prod:
         try:
@@ -40,7 +48,7 @@ def load_treated_data_cached():
     else:
         df_prod_tratado = pd.DataFrame(columns=["DATA", "Quantidade", "Saudavel", "Backlog", "Total_SKUs"])
 
-    # 2. Romaneios (Expedições)
+    # 2. Romaneios
     path_rom = get_path("DadosRomaneios.xlsx")
     if path_rom:
         try:
@@ -64,7 +72,7 @@ def load_treated_data_cached():
         df_fat_detalhado = pd.DataFrame()
         df_fat_bruto_raw = pd.DataFrame()
 
-    # 4. Fretes Terceirizados - Nova Planilha (Colunas C, H, D)
+    # 4. Fretes Terceirizados - Nova Planilha (Colunas C, H e D)
     path_frete = (
         get_path("RELAÇÃO CUSTO FRETES_2026-08_09_2.xlsx")
         or get_path("RELAÇÃO CUSTO FRETES_2026-08_09.xlsx")
@@ -104,12 +112,20 @@ def load_treated_data_cached():
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_resumo_terceiros_MNOP():
-    """Lê diretamente a tabela dinâmica das Colunas M, N, O e P da planilha de Fretes."""
+    """Lê diretamente as Colunas M, N, O e P da planilha de Fretes."""
     data_dir = "./data/"
 
     def get_path(filename):
-        p = os.path.join(data_dir, filename)
-        return p if os.path.exists(p) else (filename if os.path.exists(filename) else None)
+        paths_to_check = [
+            os.path.join(data_dir, filename),
+            filename,
+            os.path.join(data_dir, filename.upper()),
+            filename.upper(),
+        ]
+        for p in paths_to_check:
+            if os.path.exists(p):
+                return p
+        return None
 
     path_frete = (
         get_path("RELAÇÃO CUSTO FRETES_2026-08_09_2.xlsx")

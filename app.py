@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Unifica os dados integrando a quantidade de SKUs sem sobrescrever valores."""
+    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -29,12 +29,9 @@ def build_processed_dataset():
         df_frete_tratado,
     ) = load_treated_data_cached()
 
-    if df_prod_tratado.empty or df_rom_tratado.empty:
-        return None, None, None
-
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # 1. Base Produção (PVs + Status + SKUs reais)
+    # 1. Base Produção
     df_diario = df_prod_tratado.copy()
     df_diario.rename(
         columns={
@@ -51,21 +48,24 @@ def build_processed_dataset():
         df_diario["Total_SKUs"] = 0
 
     # 2. Romaneios
-    df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
-    df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
+    if not df_rom_tratado.empty:
+        df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
+        df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
+    else:
+        df_diario["Total_Expedidos"] = 0
 
     # 3. Faturamento
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
     # 4. Frete Terceirizado Agregado por Dia
-    if not df_frete_tratado.empty and "Total_Frete" not in df_diario.columns:
+    if not df_frete_tratado.empty:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")["Valor Total Frete"]
             .sum()
             .reset_index(name="Total_Frete")
         )
-        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
+        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer").fillna({"Total_Frete": 0.0})
 
     if "Total_Frete" not in df_diario.columns:
         df_diario["Total_Frete"] = 0.0
@@ -81,7 +81,7 @@ def main():
     os.makedirs("./data/", exist_ok=True)
     df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset()
 
-    if df_diario is None:
+    if df_diario is None or df_diario.empty:
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
         st.stop()
 
@@ -96,17 +96,17 @@ def main():
             horizontal=True,
         )
 
-    df_valido = df_diario[df_diario["Total_PVs"] > 0] if not df_diario[df_diario["Total_PVs"] > 0].empty else df_diario
-    min_date = df_valido["DATA"].min().date()
-    max_date = df_valido["DATA"].max().date()
+    # Alcance de datas abrange todas as tabelas (Faturamento, Produção e Frete)
+    min_date = df_diario["DATA"].min().date()
+    max_date = df_diario["DATA"].max().date()
 
     with col_ft2:
         if tipo_filtro == "Intervalo de Calendário":
             data_sel = st.date_input(
                 "Selecione o Período:",
                 value=(min_date, max_date),
-                min_value=df_diario["DATA"].min().date(),
-                max_value=df_diario["DATA"].max().date(),
+                min_value=min_date,
+                max_value=max_date,
             )
             dt_inicio, dt_fim = data_sel if isinstance(data_sel, tuple) and len(data_sel) == 2 else (min_date, max_date)
         elif tipo_filtro == "Por Mês":
