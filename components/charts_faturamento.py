@@ -43,7 +43,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         )
     )
 
-    # Linha de Devoluções (PRETA - ELEVADA NO EIXO Y2 PARA EVITAR SOBREPOSIÇÃO)
+    # Linha de Devoluções (LINHA PRETA + ELEVAÇÃO DE EIXO PARA SEM SOBREPOSIÇÃO)
     fig_fat_dev.add_trace(
         go.Scatter(
             x=eixo_x,
@@ -80,7 +80,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             overlaying="y",
             side="right",
             showgrid=False,
-            range=[0, max_dev * 2.80] if max_dev > 0 else None,  # Expansão para projetar a linha no topo limpo
+            range=[0, max_dev * 2.80] if max_dev > 0 else None,  # Elevação anti-sobreposição
             tickfont=dict(size=12, color="#000000"),
         ),
         xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),

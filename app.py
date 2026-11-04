@@ -30,7 +30,7 @@ def build_processed_dataset():
     ) = load_treated_data_cached()
 
     if df_prod_tratado.empty or df_rom_tratado.empty:
-        return None, None
+        return None, None, None
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
@@ -58,24 +58,20 @@ def build_processed_dataset():
     if not df_fat_unidades.empty:
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
-    # 4. Frete Terceirizado
+    # 4. Frete Terceirizado Agregado por Dia
     if not df_frete_tratado.empty and "Total_Frete" not in df_diario.columns:
         df_frete_agg = (
-            df_frete_tratado.groupby("DATA")
-            .agg({"Valor Total Frete": "sum", "Valor Total NF": "sum"})
-            .reset_index()
-            .rename(columns={"Valor Total Frete": "Total_Frete", "Valor Total NF": "Total_NF_Frete"})
+            df_frete_tratado.groupby("DATA")["Valor Total Frete"]
+            .sum()
+            .reset_index(name="Total_Frete")
         )
-        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna(
-            {"Total_Frete": 0.0, "Total_NF_Frete": 0.0}
-        )
+        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="left").fillna({"Total_Frete": 0.0})
 
     if "Total_Frete" not in df_diario.columns:
         df_diario["Total_Frete"] = 0.0
-        df_diario["Total_NF_Frete"] = 0.0
 
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
-    return df_diario, df_fat_detalhado
+    return df_diario, df_fat_detalhado, df_frete_tratado
 
 
 def main():
@@ -83,7 +79,7 @@ def main():
     ui.render_header()
 
     os.makedirs("./data/", exist_ok=True)
-    df_diario, df_fat_detalhado = build_processed_dataset()
+    df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset()
 
     if df_diario is None:
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
@@ -159,7 +155,7 @@ def main():
     render_secao_faturamento(df_filtrado, unidade_selecionada)
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
-    render_secao_frete(df_filtrado, col_fat_ativa)
+    render_secao_frete(df_filtrado, col_fat_ativa, df_frete_tratado)
     render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
     render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
 

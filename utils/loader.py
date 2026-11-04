@@ -5,7 +5,7 @@ import streamlit as st
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_treated_data_cached():
-    """Lê as abas tratadas e extrai os SKUs reais da aba DadosBrutos sem travar o app."""
+    """Lê todas as planilhas do diretório ./data/ incluindo dados de frete e SKUs reais."""
     data_dir = "./data/"
 
     def get_path(filename):
@@ -24,7 +24,6 @@ def load_treated_data_cached():
 
             df_prod_base = pd.merge(df_limpeza, df_status, on="DATA", how="outer")
 
-            # Leitura da coluna real de SKUs da aba DadosBrutos
             df_brutos = pd.read_excel(path_prod, sheet_name="DadosBrutos")
             col_sku = "SKU'S" if "SKU'S" in df_brutos.columns else ("SKU" if "SKU" in df_brutos.columns else None)
 
@@ -52,7 +51,7 @@ def load_treated_data_cached():
     else:
         df_rom_tratado = pd.DataFrame(columns=["DATA", "Qtd. Expedição"])
 
-    # 3. Faturamento por Cliente e Faturamento Bruto
+    # 3. Faturamento
     path_fat = get_path("DadosFaturamento.xlsx")
     if path_fat:
         try:
@@ -65,29 +64,34 @@ def load_treated_data_cached():
         df_fat_detalhado = pd.DataFrame()
         df_fat_bruto_raw = pd.DataFrame()
 
-    # 4. Fretes Terceirizados (Aba 26 - Soma da Coluna M)
-    path_frete = get_path("SOLICITACAO TERCEIROS.xlsx")
+    # 4. Fretes Terceirizados - Nova Planilha (Colunas C, H, D)
+    path_frete = (
+        get_path("RELAÇÃO CUSTO FRETES_2026-08_09_2.xlsx")
+        or get_path("RELAÇÃO CUSTO FRETES_2026-08_09.xlsx")
+        or get_path("SOLICITACAO TERCEIROS.xlsx")
+    )
     if path_frete:
         try:
-            df_frete_tratado = pd.read_excel(path_frete, sheet_name="26")
-        except Exception:
-            try:
-                df_frete_tratado = pd.read_excel(path_frete, sheet_name=0)
-            except Exception:
-                df_frete_tratado = pd.DataFrame()
+            df_frete_raw = pd.read_excel(path_frete, sheet_name=0)
 
-        if not df_frete_tratado.empty and "Data da solicitação" in df_frete_tratado.columns:
-            df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["Data da solicitação"], errors="coerce")
-            df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
-                df_frete_tratado["Valor Total Frete"], errors="coerce"
-            ).fillna(0.0)
-            df_frete_tratado["Valor Total NF"] = pd.to_numeric(
-                df_frete_tratado["Valor Total NF"], errors="coerce"
-            ).fillna(0.0)
-        else:
-            df_frete_tratado = pd.DataFrame(columns=["DATA", "Valor Total Frete", "Valor Total NF"])
+            if "EMISSÃO CTE/NFE" in df_frete_raw.columns and "VL. FRETE" in df_frete_raw.columns:
+                df_frete_tratado = df_frete_raw.copy()
+                df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["EMISSÃO CTE/NFE"], errors="coerce")
+                df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
+                    df_frete_tratado["VL. FRETE"], errors="coerce"
+                ).fillna(0.0)
+                df_frete_tratado["TRANSPORTADORA"] = df_frete_tratado["TRANSPORTADORA"].fillna("OUTROS").astype(str)
+            else:
+                df_frete_tratado = df_frete_raw.copy()
+                df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["Data da solicitação"], errors="coerce")
+                df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
+                    df_frete_tratado["Valor Total Frete"], errors="coerce"
+                ).fillna(0.0)
+                df_frete_tratado["TRANSPORTADORA"] = "GERAL"
+        except Exception:
+            df_frete_tratado = pd.DataFrame(columns=["DATA", "Valor Total Frete", "TRANSPORTADORA"])
     else:
-        df_frete_tratado = pd.DataFrame(columns=["DATA", "Valor Total Frete", "Valor Total NF"])
+        df_frete_tratado = pd.DataFrame(columns=["DATA", "Valor Total Frete", "TRANSPORTADORA"])
 
     return (
         df_prod_tratado,
@@ -96,3 +100,35 @@ def load_treated_data_cached():
         df_fat_bruto_raw,
         df_frete_tratado,
     )
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_resumo_terceiros_MNOP():
+    """Lê diretamente a tabela dinâmica das Colunas M, N, O e P da planilha de Fretes."""
+    data_dir = "./data/"
+
+    def get_path(filename):
+        p = os.path.join(data_dir, filename)
+        return p if os.path.exists(p) else (filename if os.path.exists(filename) else None)
+
+    path_frete = (
+        get_path("RELAÇÃO CUSTO FRETES_2026-08_09_2.xlsx")
+        or get_path("RELAÇÃO CUSTO FRETES_2026-08_09.xlsx")
+        or get_path("SOLICITACAO TERCEIROS.xlsx")
+    )
+
+    if not path_frete:
+        return pd.DataFrame()
+
+    try:
+        df_raw = pd.read_excel(path_frete, sheet_name=0)
+        df_mnop = df_raw.iloc[:, 12:16].dropna(subset=[df_raw.columns[12]]).copy()
+        df_mnop.columns = ["Transportadora", "Valor_NF", "Valor_Frete", "Pct_Frete"]
+
+        df_mnop["Valor_NF"] = pd.to_numeric(df_mnop["Valor_NF"], errors="coerce").fillna(0.0)
+        df_mnop["Valor_Frete"] = pd.to_numeric(df_mnop["Valor_Frete"], errors="coerce").fillna(0.0)
+        df_mnop["Pct_Frete"] = pd.to_numeric(df_mnop["Pct_Frete"], errors="coerce").fillna(0.0)
+
+        return df_mnop
+    except Exception:
+        return pd.DataFrame()

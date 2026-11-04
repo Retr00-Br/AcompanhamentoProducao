@@ -1,10 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from utils.loader import load_resumo_terceiros_MNOP
 from utils.parser import fmt_brl
 
 
-def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
+def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_bruto: pd.DataFrame = None):
     st.divider()
     st.markdown("### 🚚 Indicadores & Análise de Frete Terceirizado")
 
@@ -26,7 +27,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric(
-        "💵 Frete Total Acumulado (Coluna M)",
+        "💵 Frete Total Acumulado",
         f"R$ {frete_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
     )
     k2.metric("📊 % Frete / Faturamento (Ponderado)", f"{pct_frete_acumulado:.2f}%")
@@ -53,7 +54,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     max_frete = max(y_frete) if y_frete else 1000.0
     max_pct = max(y_pct_diario) if y_pct_diario else 10.0
 
-    # GRÁFICO 1: FATURAMENTO VS FRETE (SEM CRUZAMENTO DE DADOS)
+    # GRÁFICO 1: FATURAMENTO VS FRETE (ELEVAÇÃO PARA NÃO SOBREPOR)
     st.subheader("📊 Faturamento Diário vs. Valor do Frete Terceirizado")
     fig_fat_frete = go.Figure()
 
@@ -106,7 +107,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
             overlaying="y",
             side="right",
             showgrid=False,
-            range=[0, max_frete * 2.80] if max_frete > 0 else None,  # Expansão para elevar a linha acima das barras
+            range=[0, max_frete * 2.80] if max_frete > 0 else None,
             tickfont=dict(size=12, color="#000000"),
         ),
         xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
@@ -209,3 +210,86 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str):
     )
 
     st.plotly_chart(fig_pct_frete, use_container_width=True)
+
+    # GRÁFICO 4: PIZZA / DONUT DE TERCEIROS
+    st.subheader("🍕 Distribuição de Custo por Transportadora / Terceiro")
+
+    if df_frete_bruto is not None and not df_frete_bruto.empty and "TRANSPORTADORA" in df_frete_bruto.columns:
+        min_dt = df_frete_ativo["DATA"].min()
+        max_dt = df_frete_ativo["DATA"].max()
+
+        df_terceiros = df_frete_bruto[
+            (df_frete_bruto["DATA"] >= min_dt) & (df_frete_bruto["DATA"] <= max_dt)
+        ].copy()
+
+        df_terceiros_agg = (
+            df_terceiros.groupby("TRANSPORTADORA")["Valor Total Frete"]
+            .sum()
+            .reset_index()
+            .sort_values(by="Valor Total Frete", ascending=False)
+        )
+
+        df_terceiros_agg = df_terceiros_agg[df_terceiros_agg["Valor Total Frete"] > 0]
+
+        if not df_terceiros_agg.empty:
+            c_modo, _ = st.columns([2, 2])
+            with c_modo:
+                modo_exibicao = st.radio(
+                    "Exibir rótulos por:",
+                    ["Porcentagem (%)", "Valor Monetário (R$)"],
+                    horizontal=True,
+                )
+
+            if modo_exibicao == "Porcentagem (%)":
+                text_info = "label+percent"
+                hover_tpl = "<b>%{label}</b><br>Participação: %{percent}<br>Total: R$ %{value:,.2f}<extra></extra>"
+            else:
+                text_info = "label+value"
+                hover_tpl = "<b>%{label}</b><br>Total: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>"
+
+            fig_pizza = go.Figure(
+                go.Pie(
+                    labels=df_terceiros_agg["TRANSPORTADORA"],
+                    values=df_terceiros_agg["Valor Total Frete"],
+                    hole=0.4,
+                    textinfo=text_info,
+                    hovertemplate=hover_tpl,
+                    textfont=dict(size=12, color="#000000"),
+                    marker=dict(line=dict(color="#ffffff", width=2)),
+                )
+            )
+
+            fig_pizza.update_layout(
+                template="plotly_white",
+                font=dict(color="#000000", size=13, family="Arial"),
+                height=520,
+                margin=dict(l=40, r=40, t=40, b=40),
+                legend=dict(orientation="v", y=0.5, x=1.05),
+            )
+
+            st.plotly_chart(fig_pizza, use_container_width=True)
+
+    # TABELA ACUMULADA (COLUNAS M, N, O e P)
+    df_mnop = load_resumo_terceiros_MNOP()
+    if not df_mnop.empty:
+        st.markdown("### 📊 Acumulado Geral por Transportadora (Colunas M, N, O, P)")
+
+        df_corpo = df_mnop[df_mnop["Transportadora"].astype(str).str.upper() != "TOTAL GERAL"].copy()
+        df_total = df_mnop[df_mnop["Transportadora"].astype(str).str.upper() == "TOTAL GERAL"].copy()
+
+        df_corpo = df_corpo.sort_values(by="Valor_Frete", ascending=False).reset_index(drop=True)
+        df_exibicao = pd.concat([df_corpo, df_total], ignore_index=True)
+
+        df_formatado = df_exibicao.copy()
+        df_formatado["Valor NF (R$)"] = df_formatado["Valor_NF"].apply(fmt_brl)
+        df_formatado["Valor Frete (R$)"] = df_formatado["Valor_Frete"].apply(fmt_brl)
+        df_formatado["% Frete / NF"] = (df_formatado["Pct_Frete"] * 100).map("{:.2f}%".format)
+
+        df_final = df_formatado[["Transportadora", "Valor NF (R$)", "Valor Frete (R$)", "% Frete / NF"]]
+
+        st.dataframe(
+            df_final,
+            use_container_width=True,
+            hide_index=True,
+            height=min(450, len(df_final) * 38 + 40),
+        )
