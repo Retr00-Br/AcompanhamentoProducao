@@ -24,7 +24,6 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         st.info("Nenhum registro para a filial selecionada.")
         return
 
-    # Agrupar por cliente e pegar os 12 maiores acumulados
     df_chart_cli = (
         df_cli.groupby("Cliente")["R$ Fatur."]
         .sum()
@@ -33,7 +32,6 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         .tail(12)
     )
 
-    # Gráfico de barras horizontais limpo e legível
     fig_cli = go.Figure(
         go.Bar(
             y=df_chart_cli["Cliente"],
@@ -71,11 +69,7 @@ def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col
     st.markdown("---")
     st.markdown("### 📑 Tabela Consolidada Diária de Operações")
 
-    if df_filtrado is empty if isinstance(df_filtrado, pd.DataFrame) else True:
-        st.info("Sem registros para exibição da tabela consolidada.")
-        return
-
-    if df_filtrado.empty:
+    if df_filtrado is None or df_filtrado.empty:
         st.info("Sem registros para exibição da tabela consolidada.")
         return
 
