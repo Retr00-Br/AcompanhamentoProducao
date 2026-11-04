@@ -63,7 +63,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame = None, col_fat_ativa: str = No
         df_pizza_final = df_principais
 
     # -------------------------------------------------------------
-    # 1 e 2. GRÁFICOS DE PIZZA LIMPOS COM LEGENDA LATERAL E MAIOR ALTURA
+    #  1 e 2. GRÁFICOS DE PIZZA LIMPOS COM LEGENDA LATERAL E MAIOR ALTURA
     # -------------------------------------------------------------
     col_piz1, col_piz2 = st.columns(2)
 
