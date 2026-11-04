@@ -45,7 +45,6 @@ def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col
         return
 
     df_tab = df_filtrado.copy()
-
     df_tab["Data"] = df_tab["DATA"].dt.strftime("%d/%m/%Y")
 
     cols = ["Data"]
@@ -56,10 +55,11 @@ def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col
         df_tab["Devoluções (R$)"] = df_tab[col_dev_ativa].apply(fmt_brl)
         cols.append("Devoluções (R$)")
     if "Total_PVs" in df_tab.columns:
-        df_tab["PVs"] = df_tab["Total_PVs"].astype(int)
+        # Tratamento seguro contra NaN para evitar IntCastingNaNError
+        df_tab["PVs"] = df_tab["Total_PVs"].fillna(0).astype(int)
         cols.append("PVs")
     if "Total_Expedidos" in df_tab.columns:
-        df_tab["Expedidos"] = df_tab["Total_Expedidos"].astype(int)
+        df_tab["Expedidos"] = df_tab["Total_Expedidos"].fillna(0).astype(int)
         cols.append("Expedidos")
     if "Total_Frete" in df_tab.columns:
         df_tab["Frete (R$)"] = df_tab["Total_Frete"].apply(fmt_brl)

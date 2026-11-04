@@ -1,58 +1,6 @@
 import pandas as pd
 
 
-def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
-    if df_raw is None or df_raw.empty:
-        return pd.DataFrame()
-
-    df_data = df_raw.iloc[2:].copy()
-    col_data = pd.to_datetime(df_data.iloc[:, 0], errors="coerce")
-
-    matriz_fat = pd.to_numeric(df_data.iloc[:, 1], errors="coerce").fillna(0)
-    matriz_dev = abs(pd.to_numeric(df_data.iloc[:, 2], errors="coerce").fillna(0))
-
-    rj_fat = pd.to_numeric(df_data.iloc[:, 3], errors="coerce").fillna(0)
-    rj_dev = abs(pd.to_numeric(df_data.iloc[:, 4], errors="coerce").fillna(0))
-
-    cp_fat = pd.to_numeric(df_data.iloc[:, 5], errors="coerce").fillna(0)
-    cp_dev = abs(pd.to_numeric(df_data.iloc[:, 6], errors="coerce").fillna(0))
-
-    sbc_fat = pd.to_numeric(df_data.iloc[:, 7], errors="coerce").fillna(0)
-    sbc_dev = abs(pd.to_numeric(df_data.iloc[:, 8], errors="coerce").fillna(0))
-
-    tot_col_j = (
-        pd.to_numeric(df_data.iloc[:, 9], errors="coerce").fillna(0)
-        if df_data.shape[1] > 9
-        else (matriz_fat + rj_fat + cp_fat + sbc_fat)
-    )
-    dev_col_k = (
-        abs(pd.to_numeric(df_data.iloc[:, 10], errors="coerce").fillna(0))
-        if df_data.shape[1] > 10
-        else (matriz_dev + rj_dev + cp_dev + sbc_dev)
-    )
-
-    df_fat = (
-        pd.DataFrame({
-            "DATA": col_data,
-            "0101 - Matriz_Fat": matriz_fat,
-            "0101 - Matriz_Dev": matriz_dev,
-            "0102 - Filial RJ_Fat": rj_fat,
-            "0102 - Filial RJ_Dev": rj_dev,
-            "0103 - Filial CP_Fat": cp_fat,
-            "0103 - Filial CP_Dev": cp_dev,
-            "0104 - Filial SBC_Fat": sbc_fat,
-            "0104 - Filial SBC_Dev": sbc_dev,
-            "Todas as Unidades (Geral)_Fat": tot_col_j,
-            "Todas as Unidades (Geral)_Dev": dev_col_k,
-        })
-        .dropna(subset=["DATA"])
-        .sort_values("DATA")
-        .reset_index(drop=True)
-    )
-
-    return df_fat
-
-
 def fmt_brl(val: float) -> str:
     """Retorna o valor monetário formatado em Real (R$) limpo."""
     try:
@@ -62,3 +10,38 @@ def fmt_brl(val: float) -> str:
         return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "R$ 0,00"
+
+
+def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Extrai os dados da aba FaturamentoBruto mapeando as colunas das filiais corretamente."""
+    if df_raw is None or df_raw.empty:
+        return pd.DataFrame()
+
+    try:
+        # A partir da linha index 2 estão os dados diários
+        df = df_raw.iloc[2:].copy()
+
+        mapping_cols = {
+            0: "DATA",
+            1: "0101 - Matriz_Fat",
+            2: "0101 - Matriz_Dev",
+            3: "0102 - Filial RJ_Fat",
+            4: "0102 - Filial RJ_Dev",
+            5: "0103 - Filial CP_Fat",
+            6: "0103 - Filial CP_Dev",
+            7: "0104 - Filial SBC_Fat",
+            8: "0104 - Filial SBC_Dev",
+            9: "Todas as Unidades (Geral)_Fat",
+            10: "Todas as Unidades (Geral)_Dev",
+        }
+
+        df = df.rename(columns=mapping_cols)
+        df["DATA"] = pd.to_datetime(df["DATA"], errors="coerce")
+
+        for col in df.columns:
+            if col != "DATA":
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+        return df.dropna(subset=["DATA"]).reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame()
