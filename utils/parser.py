@@ -54,10 +54,11 @@ def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def fmt_brl(val: float) -> str:
-    if val >= 1_000_000:
-        return f"<b>R$ {val/1_000_000:.2f}M</b>".replace(".", ",")
-    elif val >= 1_000:
-        return f"<b>R$ {val/1_000:.0f}k</b>"
-    elif val > 0:
-        return f"<b>R$ {val:.0f}</b>"
-    return ""
+    """Retorna o valor monetário formatado em Real (R$) limpo."""
+    try:
+        if pd.isna(val) or val is None:
+            return "R$ 0,00"
+        val = float(val)
+        return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return "R$ 0,00"
