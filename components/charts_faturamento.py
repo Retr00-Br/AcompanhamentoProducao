@@ -16,7 +16,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
     df_fat_ativo = df_filtrado.copy()
 
-    # Expande a visualização se houver dados ativos
     if not df_fat_ativo[df_fat_ativo[col_fat] > 0].empty:
         primeira_data = df_fat_ativo[df_fat_ativo[col_fat] > 0]["DATA"].min()
         df_fat_ativo = df_fat_ativo[df_fat_ativo["DATA"] >= primeira_data].reset_index(drop=True)
@@ -44,7 +43,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         )
     )
 
-    # Linha de Devoluções (PRETA E COM EIXO EXPANDIDO PARA NÃO COLIDIR)
+    # Linha de Devoluções (PRETA - ELEVADA NO EIXO Y2 PARA EVITAR SOBREPOSIÇÃO)
     fig_fat_dev.add_trace(
         go.Scatter(
             x=eixo_x,
@@ -54,7 +53,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             marker=dict(color="#000000", size=7, symbol="square"),
             line=dict(color="#000000", width=2.2),
             text=[f"<b>R$ {v:,.0f}</b>" if v > 0 else "" for v in y_dev],
-            textfont=dict(color="#000000", size=11, family="Arial"),
+            textfont=dict(color="#000000", size=10, family="Arial"),
             textposition="top center",
             yaxis="y2",
         )
@@ -66,7 +65,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=13, family="Arial"),
         margin=dict(l=65, r=65, t=75, b=65),
-        height=560,
+        height=580,
         bargap=0.15,
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=14, color="#000000")),
@@ -81,7 +80,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             overlaying="y",
             side="right",
             showgrid=False,
-            range=[0, max_dev * 1.80] if max_dev > 0 else None,  # Range expandido anti-colisão
+            range=[0, max_dev * 2.80] if max_dev > 0 else None,  # Expansão para projetar a linha no topo limpo
             tickfont=dict(size=12, color="#000000"),
         ),
         xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),

@@ -6,7 +6,6 @@ from utils.parser import fmt_brl
 
 def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str, unidade_selecionada: str):
 
-    # EXPANDIR APENAS PARA DATAS VÁLIDAS DE PRODUÇÃO
     df_prod_ativa = df_filtrado_prod.copy()
     if not df_prod_ativa[df_prod_ativa["Total_PVs"] > 0].empty:
         primeira_data_prod = df_prod_ativa[df_prod_ativa["Total_PVs"] > 0]["DATA"].min()
@@ -19,9 +18,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     max_pv = max(y_pvs) if y_pvs else 100.0
     max_fat = max(y_fat) if y_fat else 1000.0
 
-    # -------------------------------------------------------------
-    # GRÁFICO 2: PRODUÇÃO (PV) VS FATURAMENTO
-    # -------------------------------------------------------------
+    # GRÁFICO PRODUÇÃO VS FATURAMENTO
     st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
 
     fig_fat = go.Figure()
@@ -44,7 +41,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
             name="Faturamento",
             mode="lines+markers+text",
             text=[f"<b>{fmt_brl(v)}</b>" if v > 0 else "" for v in y_fat],
-            textfont=dict(color="#000000", size=11, family="Arial"),
+            textfont=dict(color="#000000", size=10, family="Arial"),
             textposition="top center",
             marker=dict(color="#0a9396", size=8, symbol="circle"),
             line=dict(color="#0a9396", width=2.5),
@@ -71,7 +68,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
             overlaying="y",
             side="right",
             showgrid=False,
-            range=[0, max_fat * 1.75] if max_fat > 0 else None,
+            range=[0, max_fat * 2.60] if max_fat > 0 else None,  # Expansão para separar a linha do topo das barras
             tickfont=dict(size=12, color="#000000"),
         ),
         xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
@@ -79,9 +76,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     st.plotly_chart(fig_fat, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # GRÁFICO 3: PRODUÇÃO (PV) VS SKUs/LINHAS (EIXO EXPANDIDO ANTI-COLISÃO)
-    # -------------------------------------------------------------
+    # GRÁFICO PRODUÇÃO VS SKUs/LINHAS (PROJEÇÃO LIMPA NO TOPO)
     st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs/Linhas")
     y_skus = df_prod_ativa["Total_SKUs"].astype(float).tolist()
     max_sku = max(y_skus) if y_skus else 100.0
@@ -106,7 +101,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
             name="SKUs/Linhas",
             mode="lines+markers+text",
             text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_skus],
-            textfont=dict(color="#000000", size=11, family="Arial"),
+            textfont=dict(color="#000000", size=10, family="Arial"),
             textposition="top center",
             marker=dict(color="#d97706", size=8, symbol="diamond"),
             line=dict(color="#d97706", width=2.5),
@@ -133,7 +128,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
             overlaying="y",
             side="right",
             showgrid=False,
-            range=[0, max_sku * 1.75] if max_sku > 0 else None,  # Expansão para separar a linha do topo das barras
+            range=[0, max_sku * 2.60] if max_sku > 0 else None,  # Expansão para afastar a linha das barras
             tickfont=dict(size=12, color="#000000"),
         ),
         xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
@@ -141,9 +136,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     st.plotly_chart(fig_sku, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # GRÁFICO 4: SAUDÁVEL VS BACKLOG
-    # -------------------------------------------------------------
+    # GRÁFICO SAUDÁVEL VS BACKLOG
     st.subheader("📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
     y_saudavel = df_prod_ativa["SAUDAVEL"].astype(float).tolist()
     y_backlog = df_prod_ativa["BACKLOG"].astype(float).tolist()
@@ -192,9 +185,7 @@ def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str,
     )
     st.plotly_chart(fig_status, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # GRÁFICO 5: PRODUÇÃO VS EXPEDIÇÃO
-    # -------------------------------------------------------------
+    # GRÁFICO PRODUÇÃO VS EXPEDIÇÃO
     st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
     y_expedidos = df_prod_ativa["Total_Expedidos"].astype(float).tolist()
     max_comp = max(max(y_pvs) if y_pvs else 100.0, max(y_expedidos) if y_expedidos else 100.0)
