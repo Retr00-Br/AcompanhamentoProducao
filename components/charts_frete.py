@@ -159,7 +159,7 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
 
         st.plotly_chart(fig_relacao, use_container_width=True)
 
-    # 3. GRÁFICOS DE PIZZA (DISTRIBUIÇÃO E PARTICIPAÇÃO PADRONIZADOS - NOME + PARTICIPAÇÃO)
+    # 3. GRÁFICOS DE PIZZA (APENAS PORCENTAGEM DENTRO DAS FATIAS)
     df_mnop = load_resumo_terceiros_MNOP()
     if not df_mnop.empty:
         df_corpo = df_mnop[df_mnop["Transportadora"].astype(str).str.strip().str.upper() != "TOTAL GERAL"].copy()
@@ -201,10 +201,10 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
                     labels=df_pizza_final["Transportadora"],
                     values=df_pizza_final["Valor_Frete"],
                     hole=0.40,
-                    textinfo="label+percent",
+                    textinfo="percent",  # Exibe unicamente a % dentro das fatias
                     textposition="inside",
                     hovertemplate="<b>%{label}</b><br>Frete: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>",
-                    textfont=dict(size=11, color="#ffffff"),
+                    textfont=dict(size=12, color="#ffffff"),
                     marker=dict(line=dict(color="#ffffff", width=2)),
                 )
             )
@@ -224,10 +224,10 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
                     labels=df_pizza_final["Transportadora"],
                     values=df_pizza_final["Valor_Frete"],
                     hole=0.40,
-                    textinfo="label+percent",
+                    textinfo="percent",  # Exibe unicamente a % dentro das fatias
                     textposition="inside",
                     hovertemplate="<b>%{label}</b><br>Participação: %{percent}<br>Frete: R$ %{value:,.2f}<extra></extra>",
-                    textfont=dict(size=11, color="#ffffff"),
+                    textfont=dict(size=12, color="#ffffff"),
                     marker=dict(line=dict(color="#ffffff", width=2)),
                 )
             )
