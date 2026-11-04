@@ -96,7 +96,6 @@ def main():
             horizontal=True,
         )
 
-    # Alcance de datas abrange todas as tabelas (Faturamento, Produção e Frete)
     min_date = df_diario["DATA"].min().date()
     max_date = df_diario["DATA"].max().date()
 

@@ -1,107 +1,73 @@
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+from utils.parser import fmt_brl
 
 
 def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada: str):
-    st.divider()
-    st.subheader(f"💎 Ranking Top 10 Clientes por Faturamento Monetário ({unidade_selecionada})")
+    st.markdown("---")
+    st.markdown("### 🏆 Faturamento por Cliente (3 Colunas)")
 
-    if df_fat_detalhado is None or df_fat_detalhado.empty:
-        st.info("Sem dados de faturamento para exibição.")
+    if df_fat_detalhado.empty:
+        st.info("Dados de faturamento por cliente indisponíveis.")
         return
 
-    df_fd10 = df_fat_detalhado.copy()
-    if unidade_selecionada != "Todas as Unidades (Geral)" and "Filial" in df_fd10.columns:
-        codigo_filial = int(unidade_selecionada.split(" - ")[0])
-        df_fd10 = df_fd10[df_fd10["Filial"] == codigo_filial]
+    df_cli = df_fat_detalhado.copy()
 
-    col_cli_10 = (
-        "Cliente"
-        if "Cliente" in df_fd10.columns
-        else ("Nome Fantasia" if "Nome Fantasia" in df_fd10.columns else df_fd10.columns[2])
+    colunas_3 = [c for c in ["Filial", "Cliente", "R$ Fatur."] if c in df_cli.columns]
+    df_cli = df_cli[colunas_3]
+
+    if unidade_selecionada != "Todas as Unidades (Geral)":
+        cod_filial = unidade_selecionada.split("-")[0].strip()
+        df_cli = df_cli[df_cli["Filial"].astype(str).str.contains(cod_filial, na=False)]
+
+    if df_cli.empty:
+        st.info("Nenhum registro para a filial selecionada.")
+        return
+
+    df_exibicao = df_cli.copy()
+    if "R$ Fatur." in df_exibicao.columns:
+        df_exibicao["R$ Fatur."] = df_exibicao["R$ Fatur."].apply(fmt_brl)
+
+    st.dataframe(
+        df_exibicao,
+        use_container_width=True,
+        hide_index=True,
+        height=min(500, len(df_exibicao) * 38 + 40),
     )
-    col_emissao_10 = (
-        "Data"
-        if "Data" in df_fd10.columns
-        else ("Emissão" if "Emissão" in df_fd10.columns else df_fd10.columns[0])
-    )
-    col_valor_10 = (
-        "R$ Fatur."
-        if "R$ Fatur." in df_fd10.columns
-        else ("Valor" if "Valor" in df_fd10.columns else df_fd10.columns[-1])
-    )
-
-    df_fd10["DATA_STR"] = pd.to_datetime(df_fd10[col_emissao_10], errors="coerce").dt.strftime("%Y-%m-%d")
-    datas_disponiveis = sorted(df_fd10["DATA_STR"].dropna().unique())
-
-    col_m, col_d = st.columns([2, 2])
-    with col_m:
-        modo_top10 = st.radio(
-            "Modo de Exibição:",
-            ["Por Dia Selecionado", "Acumulado do Período Geral"],
-            horizontal=True,
-            key="modo_top10_fat",
-        )
-
-    if modo_top10 == "Por Dia Selecionado" and datas_disponiveis:
-        with col_d:
-            data_sel = st.selectbox("Selecione a Data:", datas_disponiveis, index=len(datas_disponiveis) - 1)
-        df_top10_filtrado = df_fd10[df_fd10["DATA_STR"] == data_sel]
-        titulo = f"Top 10 Clientes no Dia: {data_sel}"
-    else:
-        df_top10_filtrado = df_fd10
-        titulo = "Top 10 Clientes por Faturamento Acumulado"
-
-    df_top10 = (
-        df_top10_filtrado.groupby(col_cli_10)[col_valor_10]
-        .sum()
-        .reset_index(name="Total_Faturado")
-        .sort_values("Total_Faturado", ascending=True)
-        .tail(10)
-    )
-
-    if not df_top10.empty:
-        fig_top10 = go.Figure(
-            go.Bar(
-                y=df_top10[col_cli_10],
-                x=df_top10["Total_Faturado"],
-                orientation="h",
-                marker=dict(color="#118ab2"),
-                text=[
-                    f"<b>R$ {v:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", ".")
-                    for v in df_top10["Total_Faturado"]
-                ],
-                textposition="auto",
-            )
-        )
-        fig_top10.update_layout(
-            template="plotly_white",
-            height=500,
-            title=dict(text=f"<b>{titulo}</b>"),
-            xaxis=dict(title="<b>Valor Faturado (R$)</b>"),
-            yaxis=dict(title="<b>Cliente</b>"),
-            margin=dict(l=180, r=40, t=50, b=40),
-        )
-        st.plotly_chart(fig_top10, use_container_width=True)
 
 
 def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col_dev_ativa: str):
-    with st.expander("🔍 Visualizar Tabela Consolidada"):
-        cols_para_exibir = [
-            "DATA",
-            "Total_PVs",
-            "SAUDAVEL",
-            "BACKLOG",
-            "Total_SKUs",
-            col_fat_ativa,
-            col_dev_ativa,
-            "Total_Expedidos",
-        ]
-        if "Total_Frete" in df_filtrado.columns:
-            cols_para_exibir.append("Total_Frete")
+    st.markdown("---")
+    st.markdown("### 📑 Tabela Consolidada Diária de Operações")
 
-        st.dataframe(
-            df_filtrado[cols_para_exibir],
-            use_container_width=True,
-        )
+    if df_filtrado.empty:
+        st.info("Sem registros para exibição da tabela consolidada.")
+        return
+
+    df_tab = df_filtrado.copy()
+
+    df_tab["Data"] = df_tab["DATA"].dt.strftime("%d/%m/%Y")
+
+    cols = ["Data"]
+    if col_fat_ativa in df_tab.columns:
+        df_tab["Faturamento (R$)"] = df_tab[col_fat_ativa].apply(fmt_brl)
+        cols.append("Faturamento (R$)")
+    if col_dev_ativa in df_tab.columns:
+        df_tab["Devoluções (R$)"] = df_tab[col_dev_ativa].apply(fmt_brl)
+        cols.append("Devoluções (R$)")
+    if "Total_PVs" in df_tab.columns:
+        df_tab["PVs"] = df_tab["Total_PVs"].astype(int)
+        cols.append("PVs")
+    if "Total_Expedidos" in df_tab.columns:
+        df_tab["Expedidos"] = df_tab["Total_Expedidos"].astype(int)
+        cols.append("Expedidos")
+    if "Total_Frete" in df_tab.columns:
+        df_tab["Frete (R$)"] = df_tab["Total_Frete"].apply(fmt_brl)
+        cols.append("Frete (R$)")
+
+    st.dataframe(
+        df_tab[cols],
+        use_container_width=True,
+        hide_index=True,
+        height=min(500, len(df_tab) * 38 + 40),
+    )

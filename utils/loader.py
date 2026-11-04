@@ -5,7 +5,7 @@ import streamlit as st
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_treated_data_cached():
-    """Lê as planilhas de produção, faturamento, romaneios e fretes."""
+    """Lê as planilhas de Produção, Romaneios, Faturamento e Fretes Terceirizados."""
     data_dir = "./data/"
 
     def get_path(filename):
@@ -59,44 +59,45 @@ def load_treated_data_cached():
     else:
         df_rom_tratado = pd.DataFrame(columns=["DATA", "Qtd. Expedição"])
 
-    # 3. Faturamento
-    path_fat = get_path("DadosFaturamento.xlsx")
+    # 3. Faturamento (Com 3 colunas na aba 'Faturamento por cliente')
+    path_fat = get_path("DadosFaturamento_3.xlsx") or get_path("DadosFaturamento.xlsx")
     if path_fat:
         try:
             df_fat_detalhado = pd.read_excel(path_fat, sheet_name="Faturamento por cliente")
+            colunas_validas = [c for c in ["Filial", "Cliente", "R$ Fatur."] if c in df_fat_detalhado.columns]
+            df_fat_detalhado = df_fat_detalhado[colunas_validas].copy()
+
             df_fat_bruto_raw = pd.read_excel(path_fat, sheet_name="FaturamentoBruto", header=None)
         except Exception:
-            df_fat_detalhado = pd.DataFrame()
+            df_fat_detalhado = pd.DataFrame(columns=["Filial", "Cliente", "R$ Fatur."])
             df_fat_bruto_raw = pd.DataFrame()
     else:
-        df_fat_detalhado = pd.DataFrame()
+        df_fat_detalhado = pd.DataFrame(columns=["Filial", "Cliente", "R$ Fatur."])
         df_fat_bruto_raw = pd.DataFrame()
 
-    # 4. Fretes Terceirizados
+    # 4. Frete Terceirizado (Lendo Coluna H para Data do CTE e Coluna C para Valor do Frete)
     path_frete = (
-        get_path("RELAÇÃO CUSTO FRETES_2026-08_09_3.xlsx")
+        get_path("RELAÇÃO CUSTO FRETES_2026-08_09_4.xlsx")
+        or get_path("RELAÇÃO CUSTO FRETES_2026-08_09_3.xlsx")
         or get_path("RELAÇÃO CUSTO FRETES_2026-08_09_2.xlsx")
         or get_path("RELAÇÃO CUSTO FRETES_2026-08_09.xlsx")
         or get_path("SOLICITACAO TERCEIROS.xlsx")
     )
+
     if path_frete:
         try:
             df_frete_raw = pd.read_excel(path_frete, sheet_name=0)
 
-            if "EMISSÃO CTE/NFE" in df_frete_raw.columns and "VL. FRETE" in df_frete_raw.columns:
-                df_frete_tratado = df_frete_raw.copy()
-                df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["EMISSÃO CTE/NFE"], errors="coerce")
-                df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
-                    df_frete_tratado["VL. FRETE"], errors="coerce"
-                ).fillna(0.0)
-                df_frete_tratado["TRANSPORTADORA"] = df_frete_tratado["TRANSPORTADORA"].fillna("OUTROS").astype(str)
-            else:
-                df_frete_tratado = df_frete_raw.copy()
-                df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado["Data da solicitação"], errors="coerce")
-                df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
-                    df_frete_tratado["Valor Total Frete"], errors="coerce"
-                ).fillna(0.0)
-                df_frete_tratado["TRANSPORTADORA"] = "GERAL"
+            col_data = "EMISSÃO CTE/NFE" if "EMISSÃO CTE/NFE" in df_frete_raw.columns else df_frete_raw.columns[7]
+            col_valor = "VL. FRETE" if "VL. FRETE" in df_frete_raw.columns else df_frete_raw.columns[2]
+            col_transp = "TRANSPORTADORA" if "TRANSPORTADORA" in df_frete_raw.columns else df_frete_raw.columns[3]
+
+            df_frete_tratado = df_frete_raw.copy()
+            df_frete_tratado["DATA"] = pd.to_datetime(df_frete_tratado[col_data], errors="coerce")
+            df_frete_tratado["Valor Total Frete"] = pd.to_numeric(
+                df_frete_tratado[col_valor], errors="coerce"
+            ).fillna(0.0)
+            df_frete_tratado["TRANSPORTADORA"] = df_frete_tratado[col_transp].fillna("OUTROS").astype(str)
         except Exception:
             df_frete_tratado = pd.DataFrame(columns=["DATA", "Valor Total Frete", "TRANSPORTADORA"])
     else:
@@ -113,7 +114,7 @@ def load_treated_data_cached():
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_resumo_terceiros_MNOP():
-    """Lê diretamente as Colunas M, N, O e P da planilha de Fretes."""
+    """Lê as Colunas M, N, O e P da planilha de Fretes Terceirizados."""
     data_dir = "./data/"
 
     def get_path(filename):
@@ -129,7 +130,8 @@ def load_resumo_terceiros_MNOP():
         return None
 
     path_frete = (
-        get_path("RELAÇÃO CUSTO FRETES_2026-08_09_3.xlsx")
+        get_path("RELAÇÃO CUSTO FRETES_2026-08_09_4.xlsx")
+        or get_path("RELAÇÃO CUSTO FRETES_2026-08_09_3.xlsx")
         or get_path("RELAÇÃO CUSTO FRETES_2026-08_09_2.xlsx")
         or get_path("RELAÇÃO CUSTO FRETES_2026-08_09.xlsx")
         or get_path("SOLICITACAO TERCEIROS.xlsx")
