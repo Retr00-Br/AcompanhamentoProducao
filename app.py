@@ -154,7 +154,7 @@ def main():
     render_secao_faturamento(df_filtrado, unidade_selecionada)
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
-    render_secao_frete(df_filtrado, col_fat_ativa, df_frete_tratado)
+    render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
     render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
     render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
 

@@ -1,11 +1,12 @@
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from utils.parser import fmt_brl
 
 
 def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada: str):
     st.markdown("---")
-    st.markdown("### 🏆 Faturamento por Cliente (3 Colunas)")
+    st.markdown("### 🏆 Top Clientes por Faturamento Monetário")
 
     if df_fat_detalhado.empty:
         st.info("Dados de faturamento por cliente indisponíveis.")
@@ -14,7 +15,7 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     df_cli = df_fat_detalhado.copy()
 
     colunas_3 = [c for c in ["Filial", "Cliente", "R$ Fatur."] if c in df_cli.columns]
-    df_cli = df_cli[colunas_3]
+    df_cli = df_cli[colunas_3].copy()
 
     if unidade_selecionada != "Todas as Unidades (Geral)":
         cod_filial = unidade_selecionada.split("-")[0].strip()
@@ -24,16 +25,46 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         st.info("Nenhum registro para a filial selecionada.")
         return
 
-    df_exibicao = df_cli.copy()
-    if "R$ Fatur." in df_exibicao.columns:
-        df_exibicao["R$ Fatur."] = df_exibicao["R$ Fatur."].apply(fmt_brl)
-
-    st.dataframe(
-        df_exibicao,
-        use_container_width=True,
-        hide_index=True,
-        height=min(500, len(df_exibicao) * 38 + 40),
+    # Agrupar por cliente e pegar os 12 maiores
+    df_chart_cli = (
+        df_cli.groupby("Cliente")["R$ Fatur."]
+        .sum()
+        .reset_index()
+        .sort_values(by="R$ Fatur.", ascending=True)  # Ordem ascendente para o gráfico horizontal
+        .tail(12)
     )
+
+    # 📊 GRÁFICO HORIZONTAL DE BARRAS DE FATURAMENTO POR CLIENTE
+    fig_cli = go.Figure(
+        go.Bar(
+            y=df_chart_cli["Cliente"],
+            x=df_chart_cli["R$ Fatur."],
+            orientation="h",
+            marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
+            text=[fmt_brl(v) for v in df_chart_cli["R$ Fatur."]],
+            textfont=dict(color="#000000", size=11, family="Arial"),
+            textposition="outside",
+            cliponaxis=False,
+        )
+    )
+
+    fig_cli.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=12, family="Arial"),
+        margin=dict(l=150, r=80, t=30, b=40),
+        height=520,
+        xaxis=dict(
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
+            tickprefix="R$ ",
+            showgrid=True,
+            gridcolor="#e9ecef",
+        ),
+        yaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+    )
+
+    st.plotly_chart(fig_cli, use_container_width=True)
 
 
 def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col_dev_ativa: str):
@@ -55,7 +86,6 @@ def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col
         df_tab["Devoluções (R$)"] = df_tab[col_dev_ativa].apply(fmt_brl)
         cols.append("Devoluções (R$)")
     if "Total_PVs" in df_tab.columns:
-        # Tratamento seguro contra NaN para evitar IntCastingNaNError
         df_tab["PVs"] = df_tab["Total_PVs"].fillna(0).astype(int)
         cols.append("PVs")
     if "Total_Expedidos" in df_tab.columns:

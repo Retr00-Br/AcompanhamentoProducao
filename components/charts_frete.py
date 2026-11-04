@@ -5,26 +5,61 @@ from utils.loader import load_resumo_terceiros_MNOP
 from utils.parser import fmt_brl
 
 
-def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_bruto: pd.DataFrame = None):
+def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_frete_bruto: pd.DataFrame = None):
     st.divider()
     st.markdown("### 🚚 Indicadores & Análise de Frete Terceirizado")
 
-    if df_filtrado.empty:
-        st.info("Sem lançamentos de frete para o período selecionado.")
+    if df_diario_completo is None or df_diario_completo.empty:
+        st.info("Sem lançamentos de frete registrados.")
         return
 
-    df_frete_ativo = df_filtrado.copy()
+    # Base com dados de frete válidos
+    df_frete_base = df_diario_completo[df_diario_completo["Total_Frete"] > 0].copy()
+
+    if df_frete_base.empty:
+        df_frete_base = df_diario_completo.copy()
+
+    # -------------------------------------------------------------
+    # 📅 SELETOR DE CALENDÁRIO INDEPENDENTE DA SEÇÃO DE FRETE
+    # -------------------------------------------------------------
+    st.markdown("#### 🗓️ Filtro Temporal Exclusivo da Seção de Fretes")
+    c_cal1, c_cal2 = st.columns([2, 2])
+
+    min_frete_date = df_frete_base["DATA"].min().date()
+    max_frete_date = df_frete_base["DATA"].max().date()
+
+    with c_cal1:
+        datas_sel = st.date_input(
+            "Selecione o Intervalo de Datas para Frete:",
+            value=(min_frete_date, max_frete_date),
+            min_value=df_diario_completo["DATA"].min().date(),
+            max_value=df_diario_completo["DATA"].max().date(),
+            key="filtro_calendario_fretes_exclusivo",
+        )
+
+    if isinstance(datas_sel, tuple) and len(datas_sel) == 2:
+        dt_ini, dt_fim = datas_sel
+    else:
+        dt_ini, dt_fim = min_frete_date, max_frete_date
+
+    # Filtragem isolada da seção de frete
+    df_frete_ativo = df_diario_completo[
+        (df_diario_completo["DATA"].dt.date >= dt_ini) & (df_diario_completo["DATA"].dt.date <= dt_fim)
+    ].copy().sort_values("DATA").reset_index(drop=True)
+
+    df_frete_ativo["Data_Str"] = df_frete_ativo["DATA"].dt.strftime("%d/%m")
 
     col_fat = col_fat_ativa if col_fat_ativa in df_frete_ativo.columns else "Todas as Unidades (Geral)_Fat"
     fat_total = float(df_frete_ativo[col_fat].sum()) if col_fat in df_frete_ativo.columns else 0.0
     frete_total = float(df_frete_ativo["Total_Frete"].sum())
 
+    # Cálculo do KPI de % do frete acumulado sobre o faturamento atendido
     pct_frete_sobre_faturamento = (frete_total / fat_total * 100) if fat_total > 0 else 0.0
 
     df_dias_frete = df_frete_ativo[df_frete_ativo["Total_Frete"] > 0]
     dias_com_frete = len(df_dias_frete)
 
-    # 1. Cards KPIs no Topo da Seção
+    # 1. Cards KPIs
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("💵 Total Frete Acumulado", fmt_brl(frete_total))
     k2.metric("📦 Faturamento Atendido no Período", fmt_brl(fat_total))
@@ -33,7 +68,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_b
 
     st.markdown("---")
 
-    # 2. Gráfico Diário de Relação % Frete por Dia x Faturamento R$
+    # 2. Gráfico Diário de Relação % Frete por Dia X Valor Faturado
     st.subheader("📈 Relação Diária: % do Custo de Frete sobre o Faturamento (Coluna H x Coluna C)")
 
     df_chart = df_frete_ativo[(df_frete_ativo["Total_Frete"] > 0) | (df_frete_ativo[col_fat] > 0)].copy()
@@ -43,6 +78,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_b
         y_fat = df_chart[col_fat].astype(float).tolist()
         y_frete = df_chart["Total_Frete"].astype(float).tolist()
 
+        # Cálculo automático da máquina da porcentagem por dia
         y_pct_diario = [
             (frete / fat * 100) if fat > 0 else 0.0
             for frete, fat in zip(y_frete, y_fat)
@@ -87,7 +123,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_b
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#000000", size=12, family="Arial"),
             margin=dict(l=60, r=60, t=60, b=60),
-            height=540,
+            height=560,
             bargap=0.18,
             yaxis=dict(
                 title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
@@ -102,7 +138,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_b
                 side="right",
                 showgrid=False,
                 ticksuffix="%",
-                range=[0, max(max_pct * 2.0, 5.0)],
+                range=[0, max(max_pct * 1.40, 10.0)],
             ),
             xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
             legend=dict(orientation="h", y=1.10, x=1, xanchor="right", font=dict(size=12, color="#000000")),
@@ -110,7 +146,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_b
 
         st.plotly_chart(fig_relacao, use_container_width=True)
 
-    # 3. Restauração das Duas Pizzas (Valor Monetário R$ e Porcentagem %)
+    # 3. Gráficos de Pizza
     df_mnop = load_resumo_terceiros_MNOP()
     if not df_mnop.empty:
         df_corpo = df_mnop[df_mnop["Transportadora"].astype(str).str.strip().str.upper() != "TOTAL GERAL"].copy()
@@ -191,7 +227,7 @@ def render_secao_frete(df_filtrado: pd.DataFrame, col_fat_ativa: str, df_frete_b
             )
             st.plotly_chart(fig_pie_pct, use_container_width=True)
 
-        # 4. Gráfico Top 10 Transportadoras
+        # 4. Top 10 Transportadoras
         st.subheader("🏆 Top 10 Transportadoras: Valor de Frete (R$) & Porcentagem (%)")
 
         df_top10 = df_corpo.head(10).copy()
