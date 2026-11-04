@@ -297,3 +297,34 @@ def render_secao_frete(df_diario_completo: pd.DataFrame, col_fat_ativa: str, df_
             hide_index=True,
             height=min(600, len(df_final) * 38 + 40),
         )
+        def fmt_executivo_brl(val: float) -> str:
+    """Retorna o valor monetário abreviado para rótulos de gráfico (ex: R$ 457k, R$ 1,5M)."""
+    try:
+        if pd.isna(val) or val <= 0:
+            return ""
+        val = float(val)
+        if val >= 1_000_000:
+            return f"R$ {val / 1_000_000:.1f}M".replace(".", ",")
+        elif val >= 1_000:
+            return f"R$ {val / 1_000:.0f}k"
+        else:
+            return f"R$ {val:.0f}"
+    except Exception:
+        return ""
+
+
+# Dentro da função render_secao_frete, no grafico fig_relacao:
+        fig_relacao.add_trace(
+            go.Bar(
+                x=eixo_x,
+                y=y_fat,
+                name="Faturamento (R$)",
+                marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
+                text=[fmt_executivo_brl(v) for v in y_fat],
+                textfont=dict(color="#000000", size=10, family="Arial Black"),
+                textangle=-90,
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
+            )
+        )

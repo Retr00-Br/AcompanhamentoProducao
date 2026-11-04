@@ -1,6 +1,23 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from utils.parser import fmt_brl
+
+
+def fmt_executivo_brl(val: float) -> str:
+    """Retorna o valor monetário abreviado para rótulos de gráfico (ex: R$ 457k, R$ 1,5M)."""
+    try:
+        if pd.isna(val) or val <= 0:
+            return ""
+        val = float(val)
+        if val >= 1_000_000:
+            return f"R$ {val / 1_000_000:.1f}M".replace(".", ",")
+        elif val >= 1_000:
+            return f"R$ {val / 1_000:.0f}k"
+        else:
+            return f"R$ {val:.0f}"
+    except Exception:
+        return ""
 
 
 def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str):
@@ -30,13 +47,18 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
     fig = go.Figure()
 
-    # Barras com Hover Limpo e Detalhado
+    # Barras de Faturamento com os valores EXECUTIVOS visíveis no topo
     fig.add_trace(
         go.Bar(
             x=eixo_x,
             y=y_fat,
             name="Faturamento (R$)",
             marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
+            text=[fmt_executivo_brl(v) for v in y_fat],
+            textfont=dict(color="#000000", size=10, family="Arial Black"),
+            textangle=-90,
+            textposition="outside",
+            cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
@@ -60,15 +82,15 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=12, family="Arial"),
-        margin=dict(l=50, r=60, t=50, b=60),
-        height=520,
+        margin=dict(l=50, r=60, t=70, b=60),
+        height=550,
         bargap=0.18,
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             tickprefix="R$ ",
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max_fat * 1.15],
+            range=[0, max_fat * 1.45],  # Espaço para acomodar os rótulos sem cortar no topo
         ),
         yaxis2=dict(
             title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=13, color="#000000")),
@@ -76,10 +98,10 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             side="right",
             tickprefix="R$ ",
             showgrid=False,
-            range=[0, max(max_dev * 1.25, 1000.0)],
+            range=[0, max(max_dev * 1.30, 1000.0)],
         ),
         xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
-        legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
+        legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
     )
 
     st.plotly_chart(fig, use_container_width=True)
