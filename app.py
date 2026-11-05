@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=60, show_spinner=False)
 def build_processed_dataset():
-    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário garantindo alinhamento de dtypes e preenchimento numérico."""
+    """Unifica os dados de Produção, Romaneios, Faturamento e Frete."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -34,17 +34,16 @@ def build_processed_dataset():
     # 1. Base Produção
     df_diario = df_prod_tratado.copy()
 
-    # Normalização dos nomes das colunas
     renames = {}
     for c in df_diario.columns:
-        c_str = str(c).strip()
-        if c_str.upper() == "QUANTIDADE":
+        c_upper = str(c).strip().upper()
+        if c_upper == "QUANTIDADE":
             renames[c] = "Total_PVs"
-        elif c_str.upper() == "SAUDAVEL":
+        elif c_upper == "SAUDAVEL":
             renames[c] = "Saudavel"
-        elif c_str.upper() == "BACKLOG":
+        elif c_upper == "BACKLOG":
             renames[c] = "Backlog"
-        elif c_str.upper() in ["SKU'S", "SKUS", "TOTAL_SKUS"]:
+        elif c_upper in ["SKU'S", "SKUS", "TOTAL_SKUS"]:
             renames[c] = "Total_SKUs"
 
     if renames:
@@ -52,9 +51,10 @@ def build_processed_dataset():
 
     df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").astype("datetime64[ns]")
 
-    # 2. Romaneios
+    # 2. Romaneios / Expedição (DadosRomaneios.xlsx)
     if df_rom_tratado is not None and not df_rom_tratado.empty:
-        df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
+        col_exp = "Qtd. Expedição" if "Qtd. Expedição" in df_rom_tratado.columns else df_rom_tratado.columns[1]
+        df_r = df_rom_tratado.groupby("DATA")[col_exp].sum().reset_index(name="Total_Expedidos")
         df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce").astype("datetime64[ns]")
         df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer")
     else:
@@ -75,15 +75,13 @@ def build_processed_dataset():
         df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").astype("datetime64[ns]")
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer")
 
-    # Garantia de preenchimento de nulos para todas as colunas numéricas geradas por outer merge
-    colunas_numericas = df_diario.select_dtypes(include=["number", "float64", "int64"]).columns
-    df_diario[colunas_numericas] = df_diario[colunas_numericas].fillna(0.0)
+    # Preenchimento numérico pós-merge
+    colunas_num = df_diario.select_dtypes(include=["number", "float64", "int64"]).columns
+    df_diario[colunas_num] = df_diario[colunas_num].fillna(0.0)
 
-    for col in ["Total_PVs", "Saudavel", "Backlog", "Total_SKUs", "Total_Expedidos", "Total_Frete"]:
-        if col not in df_diario.columns:
-            df_diario[col] = 0.0
+    if "Notas_Realizadas" not in df_diario.columns:
+        df_diario["Notas_Realizadas"] = df_diario["Total_PVs"]
 
-    # Aliases de compatibilidade total
     df_diario["SAUDAVEL"] = df_diario["Saudavel"]
     df_diario["BACKLOG"] = df_diario["Backlog"]
 
@@ -103,7 +101,7 @@ def main():
         st.stop()
 
     # -------------------------------------------------------------
-    # 📅 FILTRO TEMPORAL GERAL (Faturamento, Produção e KPIs Gerais)
+    # 📅 FILTRO TEMPORAL GERAL
     # -------------------------------------------------------------
     st.subheader("📅 Filtro Temporal Geral (Faturamento & Produção)")
     col_ft1, col_ft2 = st.columns([1.5, 3])
@@ -147,16 +145,13 @@ def main():
             dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
 
-    # Aplicação do Filtro Temporal Geral
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
     ].copy().sort_values("DATA").reset_index(drop=True)
 
-    # Purga da data de teste 02/01
     df_filtrado = df_filtrado[df_filtrado["DATA"].dt.strftime("%d/%m") != "02/01"].reset_index(drop=True)
     df_filtrado["Data_Str"] = df_filtrado["DATA"].dt.strftime("%d/%m")
 
-    # Seletor de Filial
     opcoes_filiais = [
         "Todas as Unidades (Geral)",
         "0101 - Matriz",
@@ -178,7 +173,7 @@ def main():
     # 3. Top Clientes por Faturamento
     render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
-    # 4. Seção de Produção e Expedição
+    # 4. Seção de Produção e Expedição (Contém os 2 Gráficos de Produção)
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
 
