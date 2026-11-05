@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário."""
+    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário garantindo alinhamento de dtypes."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -42,29 +42,35 @@ def build_processed_dataset():
         inplace=True,
     )
 
+    # 🔒 GARANTIA DE DTYPE: Converte DATA da base principal para datetime64
+    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce")
+
     if "Total_SKUs" in df_diario.columns:
         df_diario["Total_SKUs"] = pd.to_numeric(df_diario["Total_SKUs"], errors="coerce").fillna(0)
     else:
         df_diario["Total_SKUs"] = 0
 
     # 2. Romaneios
-    if not df_rom_tratado.empty:
+    if df_rom_tratado is not None and not df_rom_tratado.empty:
         df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
+        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce")  # 🔒 Harmoniza dtype
         df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
     else:
         df_diario["Total_Expedidos"] = 0
 
     # 3. Faturamento
-    if not df_fat_unidades.empty:
+    if df_fat_unidades is not None and not df_fat_unidades.empty:
+        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce")  # 🔒 Harmoniza dtype
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
     # 4. Frete Terceirizado Agregado por Dia
-    if not df_frete_tratado.empty:
+    if df_frete_tratado is not None and not df_frete_tratado.empty:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")["Valor Total Frete"]
             .sum()
             .reset_index(name="Total_Frete")
         )
+        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce")  # 🔒 Harmoniza dtype
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer").fillna({"Total_Frete": 0.0})
 
     if "Total_Frete" not in df_diario.columns:
