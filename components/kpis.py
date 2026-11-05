@@ -1,18 +1,18 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
 
 
 def render_kpis_gerais(df_filtrado: pd.DataFrame):
     st.markdown("### 📊 Indicadores Gerais de Produção")
-    
-    total_pvs = int(df_filtrado["Total_PVs"].sum()) if "Total_PVs" in df_filtrado.columns else 0
-    
-    col_saudavel = "Saudavel" if "Saudavel" in df_filtrado.columns else "SAUDAVEL"
-    col_backlog = "Backlog" if "Backlog" in df_filtrado.columns else "BACKLOG"
-    
-    saudavel = int(df_filtrado[col_saudavel].sum()) if col_saudavel in df_filtrado.columns else 0
-    backlog = int(df_filtrado[col_backlog].sum()) if col_backlog in df_filtrado.columns else 0
-    total_skus = int(df_filtrado["Total_SKUs"].sum()) if "Total_SKUs" in df_filtrado.columns else 0
+
+    if df_filtrado is None or df_filtrado.empty:
+        st.info("Sem dados para o período selecionado.")
+        return
+
+    total_pvs = int(df_filtrado.get("Total_PVs", pd.Series([0])).sum())
+    saudavel = int(df_filtrado.get("Saudavel", pd.Series([0])).sum())
+    backlog = int(df_filtrado.get("Backlog", pd.Series([0])).sum())
+    total_skus = int(df_filtrado.get("Total_SKUs", pd.Series([0])).sum())
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("📄 Total PVs", f"{total_pvs}")
@@ -23,33 +23,30 @@ def render_kpis_gerais(df_filtrado: pd.DataFrame):
 
 def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
     st.markdown("### 🎯 Médias Diárias da Operação")
-    if df_filtrado.empty:
+
+    if df_filtrado is None or df_filtrado.empty:
         return
 
-    col_fat_ativa = f"{unidade_selecionada}_Fat"
-    fat_total = float(df_filtrado[col_fat_ativa].sum()) if col_fat_ativa in df_filtrado.columns else 0.0
-    dias_com_fat = len(df_filtrado[df_filtrado[col_fat_ativa] > 0])
-    media_fat_diaria = fat_total / (dias_com_fat if dias_com_fat > 0 else 1)
+    df_dias_validos = df_filtrado[df_filtrado.get("Total_PVs", 0) > 0].copy()
+    dias_count = len(df_dias_validos) if len(df_dias_validos) > 0 else 1
 
-    media_saudavel = float(df_filtrado["SAUDAVEL"].mean())
-    media_backlog = float(df_filtrado["BACKLOG"].mean())
-    media_skus = float(df_filtrado["Total_SKUs"].mean())
+    saudavel_sum = df_filtrado.get("Saudavel", pd.Series([0])).sum()
+    backlog_sum = df_filtrado.get("Backlog", pd.Series([0])).sum()
+    skus_sum = df_filtrado.get("Total_SKUs", pd.Series([0])).sum()
 
-    df_exp = df_filtrado[df_filtrado["Total_Expedidos"] > 0]
-    if df_exp.empty:
-        df_exp = df_filtrado
-    media_expedidos = float(df_exp["Total_Expedidos"].mean())
+    media_saudavel = saudavel_sum / dias_count
+    media_backlog = backlog_sum / dias_count
+    media_skus = skus_sum / dias_count
 
-    pm1, pm2, pm3, pm4, pm5 = st.columns(5)
-    pm1.metric("📈 Média Saudável/Dia", f"{media_saudavel:.1f}")
-    pm2.metric("⚠️ Média Backlog/Dia", f"{media_backlog:.1f}")
-    pm3.metric("📦 Média SKUs/Linhas/Dia", f"{media_skus:.1f}")
-    pm4.metric(
-        "💵 Média Faturada/Dia",
-        f"R$ {media_fat_diaria:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-    )
-    pm5.metric(
-        "🚚 Média de Expedição",
-        f"{media_expedidos:.1f} vol.",
-        help="Média diária de volumes expedidos considerando apenas dias com operação de romaneio.",
-    )
+    col_fat = f"{unidade_selecionada}_Fat"
+    val_fat = df_filtrado[col_fat].sum() if col_fat in df_filtrado.columns else df_filtrado.get("Todas as Unidades (Geral)_Fat", pd.Series([0])).sum()
+    media_fat = val_fat / dias_count
+
+    media_expedicao = df_filtrado.get("Total_Expedidos", pd.Series([0])).sum() / dias_count
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("📈 Média Saudável/Dia", f"{media_saudavel:.1f}")
+    c2.metric("⚠️ Média Backlog/Dia", f"{media_backlog:.1f}")
+    c3.metric("📦 Média SKUs/Linhas/Dia", f"{media_skus:.1f}")
+    c4.metric("💵 Média Faturada/Dia", f"R$ {media_fat:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c5.metric("🚚 Média de Expedição", f"{media_expedicao:.1f} vol.")

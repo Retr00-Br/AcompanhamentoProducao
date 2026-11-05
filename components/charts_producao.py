@@ -1,237 +1,73 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from utils.parser import fmt_brl
 
 
-def render_graficos_producao(df_filtrado_prod: pd.DataFrame, col_fat_ativa: str, unidade_selecionada: str):
+def render_graficos_producao(df_filtrado: pd.DataFrame, col_fat_ativa: str, unidade_selecionada: str):
+    st.markdown("---")
+    st.markdown("### 📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
 
-    df_prod_ativa = df_filtrado_prod.copy()
-    if not df_prod_ativa[df_prod_ativa["Total_PVs"] > 0].empty:
-        primeira_data_prod = df_prod_ativa[df_prod_ativa["Total_PVs"] > 0]["DATA"].min()
-        df_prod_ativa = df_prod_ativa[df_prod_ativa["DATA"] >= primeira_data_prod].reset_index(drop=True)
+    if df_filtrado is None or df_filtrado.empty:
+        st.info("Sem registros de produção para o período selecionado.")
+        return
 
-    eixo_x = df_prod_ativa["Data_Str"].astype(str).tolist()
-    y_pvs = df_prod_ativa["Total_PVs"].astype(float).tolist()
-    y_fat = df_prod_ativa[col_fat_ativa].astype(float).tolist()
+    df_chart = df_filtrado.copy()
 
-    max_pv = max(y_pvs) if y_pvs else 100.0
-    max_fat = max(y_fat) if y_fat else 1000.0
+    y_saudavel = [int(v) for v in df_chart.get("Saudavel", pd.Series([0] * len(df_chart))).fillna(0)]
+    y_backlog = [int(v) for v in df_chart.get("Backlog", pd.Series([0] * len(df_chart))).fillna(0)]
+    eixo_x = df_chart["Data_Str"].tolist()
 
-    # GRÁFICO PRODUÇÃO VS FATURAMENTO
-    st.subheader(f"💵 Produção Diária: Pedidos de Venda (PV) vs. Faturamento ({unidade_selecionada})")
+    max_val = max(max(y_saudavel, default=10), max(y_backlog, default=10))
 
-    fig_fat = go.Figure()
-    fig_fat.add_trace(
-        go.Bar(
-            x=eixo_x,
-            y=y_pvs,
-            name="PVs",
-            marker=dict(color="#0077b6", line=dict(color="#000000", width=1.2)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_pvs],
-            textfont=dict(color="#000000", size=12, family="Arial"),
-            textposition="outside",
-            cliponaxis=False,
-        )
-    )
-    fig_fat.add_trace(
-        go.Scatter(
-            x=eixo_x,
-            y=y_fat,
-            name="Faturamento",
-            mode="lines+markers+text",
-            text=[f"<b>{fmt_brl(v)}</b>" if v > 0 else "" for v in y_fat],
-            textfont=dict(color="#000000", size=10, family="Arial"),
-            textposition="top center",
-            marker=dict(color="#0a9396", size=8, symbol="circle"),
-            line=dict(color="#0a9396", width=2.5),
-            yaxis="y2",
-        )
-    )
-    fig_fat.update_layout(
-        template="plotly_white",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=13, family="Arial"),
-        margin=dict(l=60, r=60, t=75, b=60),
-        height=580,
-        bargap=0.15,
-        yaxis=dict(
-            title=dict(text="<b>Qtd. Pedidos (PV)</b>", font=dict(size=14, color="#000000")),
-            range=[0, max_pv * 1.35] if max_pv > 0 else None,
-            tickfont=dict(size=12, color="#000000"),
-            showgrid=True,
-            gridcolor="#e9ecef",
-        ),
-        yaxis2=dict(
-            title=dict(text="<b>Valor Faturado (R$)</b>", font=dict(size=14, color="#000000")),
-            overlaying="y",
-            side="right",
-            showgrid=False,
-            range=[0, max_fat * 2.80] if max_fat > 0 else None,
-            tickfont=dict(size=12, color="#000000"),
-        ),
-        xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
-        legend=dict(orientation="h", y=1.10, x=1, xanchor="right", font=dict(size=13, color="#000000")),
-    )
-    st.plotly_chart(fig_fat, use_container_width=True)
+    fig = go.Figure()
 
-    # GRÁFICO PRODUÇÃO VS SKUs/LINHAS (PROJEÇÃO LIMPA NO TOPO)
-    st.subheader("📊 Produção Diária: Pedidos de Venda (PV) vs. SKUs/Linhas")
-    y_skus = df_prod_ativa["Total_SKUs"].astype(float).tolist()
-    max_sku = max(y_skus) if y_skus else 100.0
-
-    fig_sku = go.Figure()
-    fig_sku.add_trace(
-        go.Bar(
-            x=eixo_x,
-            y=y_pvs,
-            name="PVs",
-            marker=dict(color="#0077b6", line=dict(color="#000000", width=1.2)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_pvs],
-            textfont=dict(color="#000000", size=12, family="Arial"),
-            textposition="outside",
-            cliponaxis=False,
-        )
-    )
-    fig_sku.add_trace(
-        go.Scatter(
-            x=eixo_x,
-            y=y_skus,
-            name="SKUs/Linhas",
-            mode="lines+markers+text",
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_skus],
-            textfont=dict(color="#000000", size=10, family="Arial"),
-            textposition="top center",
-            marker=dict(color="#d97706", size=8, symbol="diamond"),
-            line=dict(color="#d97706", width=2.5),
-            yaxis="y2",
-        )
-    )
-    fig_sku.update_layout(
-        template="plotly_white",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=13, family="Arial"),
-        margin=dict(l=60, r=60, t=75, b=60),
-        height=580,
-        bargap=0.15,
-        yaxis=dict(
-            title=dict(text="<b>Qtd. Pedidos (PV)</b>", font=dict(size=14, color="#000000")),
-            range=[0, max_pv * 1.35] if max_pv > 0 else None,
-            tickfont=dict(size=12, color="#000000"),
-            showgrid=True,
-            gridcolor="#e9ecef",
-        ),
-        yaxis2=dict(
-            title=dict(text="<b>Total SKUs/Linhas</b>", font=dict(size=14, color="#000000")),
-            overlaying="y",
-            side="right",
-            showgrid=False,
-            range=[0, max_sku * 2.80] if max_sku > 0 else None,
-            tickfont=dict(size=12, color="#000000"),
-        ),
-        xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
-        legend=dict(orientation="h", y=1.10, x=1, xanchor="right", font=dict(size=13, color="#000000")),
-    )
-    st.plotly_chart(fig_sku, use_container_width=True)
-
-    # GRÁFICO SAUDÁVEL VS BACKLOG
-    st.subheader("📋 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
-    y_saudavel = df_prod_ativa["SAUDAVEL"].astype(float).tolist()
-    y_backlog = df_prod_ativa["BACKLOG"].astype(float).tolist()
-
-    fig_status = go.Figure()
-    fig_status.add_trace(
-        go.Bar(
-            x=eixo_x,
-            y=y_saudavel,
-            name="Notas Saudáveis",
-            marker=dict(color="#0f9f90", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_saudavel],
-            textfont=dict(color="#ffffff", size=11, family="Arial"),
-            textposition="inside",
-            cliponaxis=False,
-        )
-    )
-    fig_status.add_trace(
+    # Barras de Backlog
+    fig.add_trace(
         go.Bar(
             x=eixo_x,
             y=y_backlog,
             name="Backlog",
-            marker=dict(color="#d9381e", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_backlog],
-            textfont=dict(color="#ffffff", size=11, family="Arial"),
-            textposition="inside",
+            marker=dict(color="#c0392b", line=dict(color="#000000", width=1.0)),
+            text=[f"<b>{v}</b>" if v > 0 else "" for v in y_backlog],
+            textfont=dict(color="#000000", size=11, family="Arial Black"),
+            textposition="outside",
             cliponaxis=False,
+            hovertemplate="<b>Data: %{x}</b><br>Backlog: %{y}<extra></extra>",
         )
     )
-    fig_status.update_layout(
+
+    # Barras de Notas Saudáveis
+    fig.add_trace(
+        go.Bar(
+            x=eixo_x,
+            y=y_saudavel,
+            name="Notas Saudáveis",
+            marker=dict(color="#16a085", line=dict(color="#000000", width=1.0)),
+            text=[f"<b>{v}</b>" if v > 0 else "" for v in y_saudavel],
+            textfont=dict(color="#000000", size=11, family="Arial Black"),
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="<b>Data: %{x}</b><br>Saudável: %{y}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=13, family="Arial"),
-        barmode="stack",
-        height=580,
-        bargap=0.15,
-        yaxis=dict(
-            title=dict(text="<b>Quantidade de Pedidos (PV)</b>", font=dict(size=14, color="#000000")),
-            tickfont=dict(size=12, color="#000000"),
-            showgrid=True,
-            gridcolor="#e9ecef",
-        ),
-        xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
-        legend=dict(orientation="h", y=1.10, x=1, xanchor="right", font=dict(size=13, color="#000000")),
-    )
-    st.plotly_chart(fig_status, use_container_width=True)
-
-    # GRÁFICO PRODUÇÃO VS EXPEDIÇÃO
-    st.subheader("🚚 Comparativo: Pedidos Produzidos (PV) vs. Expedições")
-    y_expedidos = df_prod_ativa["Total_Expedidos"].astype(float).tolist()
-    max_comp = max(max(y_pvs) if y_pvs else 100.0, max(y_expedidos) if y_expedidos else 100.0)
-
-    fig_comp = go.Figure()
-    fig_comp.add_trace(
-        go.Bar(
-            x=eixo_x,
-            y=y_pvs,
-            name="Produzidos",
-            marker=dict(color="#0f9f90", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_pvs],
-            textfont=dict(color="#000000", size=11, family="Arial"),
-            textposition="outside",
-            cliponaxis=False,
-        )
-    )
-    fig_comp.add_trace(
-        go.Bar(
-            x=eixo_x,
-            y=y_expedidos,
-            name="Expedidos",
-            marker=dict(color="#d9381e", line=dict(color="#000000", width=0.8)),
-            text=[f"<b>{int(v)}</b>" if v > 0 else "" for v in y_expedidos],
-            textfont=dict(color="#000000", size=11, family="Arial"),
-            textposition="outside",
-            cliponaxis=False,
-        )
-    )
-    fig_comp.update_layout(
-        template="plotly_white",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=13, family="Arial"),
+        font=dict(color="#000000", size=12, family="Arial"),
+        margin=dict(l=50, r=50, t=50, b=60),
+        height=520,
         barmode="group",
-        height=580,
-        bargap=0.15,
-        bargroupgap=0.05,
+        bargap=0.20,
         yaxis=dict(
-            title=dict(text="<b>Quantidade</b>", font=dict(size=14, color="#000000")),
-            range=[0, max_comp * 1.30],
-            tickfont=dict(size=12, color="#000000"),
+            title=dict(text="<b>Quantidade de Pedidos (PV)</b>", font=dict(size=13, color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
+            range=[0, max_val * 1.35],
         ),
-        xaxis=dict(type="category", tickfont=dict(size=12, color="#000000")),
-        legend=dict(orientation="h", y=1.10, x=1, xanchor="right", font=dict(size=13, color="#000000")),
+        xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+        legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
     )
-    st.plotly_chart(fig_comp, use_container_width=True)
+
+    st.plotly_chart(fig, use_container_width=True)
