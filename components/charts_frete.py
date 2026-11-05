@@ -12,26 +12,11 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         st.info("Sem dados de frete terceirizado disponíveis.")
         return
 
-    # =========================================================================
-    # 1. KPIs SUPERIORES
-    # =========================================================================
-    total_frete = df_frete_tratado["Valor Total Frete"].sum()
     col_fat_geral = "Todas as Unidades (Geral)_Fat" if "Todas as Unidades (Geral)_Fat" in df_diario.columns else col_fat_ativa
-    total_fat_periodo = df_diario[col_fat_geral].sum() if col_fat_geral in df_diario.columns else 0.0
-
-    pct_frete_geral = (total_frete / total_fat_periodo * 100) if total_fat_periodo > 0 else 0.0
-    dias_frete = df_frete_tratado["DATA"].nunique()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💵 Total Frete Acumulado", f"R$ {total_frete:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    c2.metric("📦 Faturamento Atendido", f"R$ {total_fat_periodo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    c3.metric("🎯 % Frete / Faturamento", f"{pct_frete_geral:.2f}%")
-    c4.metric("📅 Dias c/ Operação Frete", f"{dias_frete} dias")
 
     # =========================================================================
-    # 2. COMPARATIVO MENSAL FRETE VS FATURAMENTO (KPIs NO TOPO ABSOLUTO)
+    # 1. COMPARATIVO MENSAL FRETE VS FATURAMENTO (KPIs ISOLADOS NO TOPO)
     # =========================================================================
-    st.markdown("---")
     st.markdown("### 📊 Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
 
     df_diario_temp = df_diario.copy()
@@ -57,7 +42,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     fig_comp = go.Figure()
 
-    # Coluna 1: Faturamento Monetário
+    # Barra 1: Faturamento Monetário Total
     fig_comp.add_trace(
         go.Bar(
             x=eixo_x_mes,
@@ -72,7 +57,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # Coluna 2: Custo de Frete Terceirizado
+    # Barra 2: Custo de Frete Terceirizado
     fig_comp.add_trace(
         go.Bar(
             x=eixo_x_mes,
@@ -87,12 +72,13 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # Caixinha de KPI de % posicionada no TOPO ABSOLUTO para não sobrepor aos valores em R$
-    for i, (mes, p_val, f_val) in enumerate(zip(eixo_x_mes, pct_labels, y_fat)):
-        y_pos = max(y_fat[i], y_frete[i]) * 1.22 if max(y_fat[i], y_frete[i]) > 0 else max_val_comp * 0.15
+    # PORCENTAGENS ISOLADAS NO TOPO ABSOLUTO (Y FIXO ACIMA DA MAIOR BARRA)
+    y_topo_absoluto = max_val_comp * 1.25
+
+    for mes, p_val in zip(eixo_x_mes, pct_labels):
         fig_comp.add_annotation(
             x=mes,
-            y=y_pos,
+            y=y_topo_absoluto,
             text=f"<b>% Frete / Fat: {p_val:.2f}%</b>",
             showarrow=False,
             font=dict(size=12, color="#d62728", family="Arial Black"),
@@ -124,22 +110,60 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_comp, use_container_width=True)
 
     # =========================================================================
-    # 3. RELAÇÃO DIÁRIA: NÚMEROS DAS COLUNAS RETOS + PORCENTAGENS NO TOPO
+    # 2. CALENDÁRIO ISOLADO + KPIS E GRÁFICO DIÁRIO
     # =========================================================================
     st.markdown("---")
     st.markdown("### 📈 Relação Diária: % do Custo de Frete sobre o Faturamento")
 
-    df_diario_frete = pd.merge(
+    df_diario_frete_base = pd.merge(
         df_diario[["DATA", col_fat_geral]],
         df_frete_tratado.groupby("DATA")["Valor Total Frete"].sum().reset_index(),
         on="DATA",
         how="inner",
-    ).sort_values("DATA")
+    ).sort_values("DATA").reset_index(drop=True)
+
+    min_d_frete = df_diario_frete_base["DATA"].min().date()
+    max_d_frete = df_diario_frete_base["DATA"].max().date()
+
+    # 📅 CALENDÁRIO EXCLUSIVO (APENAS ALTERA ESSE GRÁFICO E SEUS KPIS)
+    col_cal1, col_cal2 = st.columns([2, 3])
+    with col_cal1:
+        sel_datas_frete = st.date_input(
+            "📅 Selecione o Intervalo de Datas exclusivo para o Frete Diário:",
+            value=(min_d_frete, max_d_frete),
+            min_value=min_d_frete,
+            max_value=max_d_frete,
+            key="calendario_exclusivo_frete_diario",
+        )
+
+    if isinstance(sel_datas_frete, tuple) and len(sel_datas_frete) == 2:
+        dt_start, dt_end = sel_datas_frete
+    else:
+        dt_start, dt_end = min_d_frete, max_d_frete
+
+    df_diario_frete = df_diario_frete_base[
+        (df_diario_frete_base["DATA"].dt.date >= dt_start) & (df_diario_frete_base["DATA"].dt.date <= dt_end)
+    ].copy().reset_index(drop=True)
+
+    # 🎯 KPIS ATUALIZADOS PELO CALENDÁRIO EXCLUSIVO
+    total_frete_sel = df_diario_frete["Valor Total Frete"].sum()
+    total_fat_sel = df_diario_frete[col_fat_geral].sum()
+    pct_frete_sel = (total_frete_sel / total_fat_sel * 100) if total_fat_sel > 0 else 0.0
+    dias_frete_sel = df_diario_frete["DATA"].nunique()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💵 Total Frete Acumulado", f"R$ {total_frete_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c2.metric("📦 Faturamento Atendido", f"R$ {total_fat_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c3.metric("🎯 % Frete / Faturamento", f"{pct_frete_sel:.2f}%")
+    c4.metric("📅 Dias c/ Operação Frete", f"{dias_frete_sel} dias")
+
+    if df_diario_frete.empty:
+        st.info("Sem lançamentos de frete no período selecionado no calendário.")
+        return
 
     df_diario_frete["Data_Str"] = df_diario_frete["DATA"].dt.strftime("%d/%m")
     df_diario_frete["Pct_Frete_Dia"] = (df_diario_frete["Valor Total Frete"] / df_diario_frete[col_fat_geral] * 100).fillna(0.0)
 
-    # Formatação de valores legíveis e retos nas barras de Faturamento (ex: R$ 380,5k ou R$ 1,5M)
     def fmt_val(v):
         if v >= 1_000_000:
             return f"R$ {v/1_000_000:.1f}M"
@@ -153,7 +177,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     fig_diario = go.Figure()
 
-    # Barras de Faturamento com NÚMEROS RETOS E LEGÍVEIS NO TOPO DAS COLUNAS
+    # Colunas Azuis de Faturamento
     fig_diario.add_trace(
         go.Bar(
             x=df_diario_frete["Data_Str"],
@@ -169,7 +193,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # Linha de Porcentagem FLUTUANDO NO TOPO ABSOLUTO (SEM COLISÃO)
+    # Linha Laranja de Porcentagem isolada no topo via eixo Y2 isolado
     fig_diario.add_trace(
         go.Scatter(
             x=df_diario_frete["Data_Str"],
@@ -200,7 +224,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max_fat * 1.35],  # Espaço para o número da barra
+            range=[0, max_fat * 1.35],
         ),
         yaxis2=dict(
             title=dict(text="<b>% Frete / Faturamento</b>", font=dict(color="#d97706")),
@@ -208,7 +232,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
             side="right",
             showgrid=False,
             ticksuffix="%",
-            range=[0, max(max_pct * 1.35, 40.0)],  # Dá folga total no topo para a linha
+            range=[0, max(max_pct * 1.45, 45.0)],  # Isola a linha no topo absoluto
         ),
         legend=dict(orientation="h", y=1.14, x=1, xanchor="right"),
     )
@@ -216,7 +240,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_diario, use_container_width=True)
 
     # =========================================================================
-    # 4. GRÁFICOS DE PIZZA & TABELA DE TERCEIROS MNOP
+    # 3. GRÁFICOS DE PIZZA & TABELA DE TERCEIROS MNOP
     # =========================================================================
     df_mnop = load_resumo_terceiros_MNOP()
 
