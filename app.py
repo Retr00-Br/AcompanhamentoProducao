@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário harmonizando dtypes de DATA."""
+    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário garantindo conversão explícita para datetime64[ns]."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -42,8 +42,8 @@ def build_processed_dataset():
         inplace=True,
     )
 
-    # Harmonização estrita do tipo datetime na chave de merge
-    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").dt.normalize()
+    # Converte DATA de forma explícita para datetime64[ns]
+    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").astype("datetime64[ns]")
 
     if "Total_SKUs" in df_diario.columns:
         df_diario["Total_SKUs"] = pd.to_numeric(df_diario["Total_SKUs"], errors="coerce").fillna(0)
@@ -53,15 +53,15 @@ def build_processed_dataset():
     # 2. Romaneios
     if df_rom_tratado is not None and not df_rom_tratado.empty:
         df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
-        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce").dt.normalize()
-        df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
+        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer")
     else:
         df_diario["Total_Expedidos"] = 0
 
     # 3. Faturamento
     if df_fat_unidades is not None and not df_fat_unidades.empty:
-        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").dt.normalize()
-        df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
+        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer")
 
     # 4. Frete Terceirizado Agregado por Dia
     if df_frete_tratado is not None and not df_frete_tratado.empty:
@@ -70,11 +70,15 @@ def build_processed_dataset():
             .sum()
             .reset_index(name="Total_Frete")
         )
-        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").dt.normalize()
-        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer").fillna({"Total_Frete": 0.0})
+        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer")
 
     if "Total_Frete" not in df_diario.columns:
         df_diario["Total_Frete"] = 0.0
+
+    # Preenchimento de nulos numéricos pós-merge sem alterar as colunas de datas/strings
+    num_cols = df_diario.select_dtypes(include=["number"]).columns
+    df_diario[num_cols] = df_diario[num_cols].fillna(0)
 
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
     return df_diario, df_fat_detalhado, df_frete_tratado
