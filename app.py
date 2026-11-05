@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário garantindo conversão explícita para datetime64[ns]."""
+    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário garantindo alinhamento de dtypes."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -33,16 +33,17 @@ def build_processed_dataset():
 
     # 1. Base Produção
     df_diario = df_prod_tratado.copy()
-    df_diario.rename(
-        columns={
-            "Quantidade": "Total_PVs",
-            "Saudavel": "SAUDAVEL",
-            "Backlog": "BACKLOG",
-        },
-        inplace=True,
-    )
+    
+    # Padroniza nomes de colunas
+    if "Quantidade" in df_diario.columns:
+        df_diario.rename(columns={"Quantidade": "Total_PVs"}, inplace=True)
+    
+    # Mantém os nomes unificados em formato padrão
+    if "SAUDAVEL" in df_diario.columns and "Saudavel" not in df_diario.columns:
+        df_diario.rename(columns={"SAUDAVEL": "Saudavel"}, inplace=True)
+    if "BACKLOG" in df_diario.columns and "Backlog" not in df_diario.columns:
+        df_diario.rename(columns={"BACKLOG": "Backlog"}, inplace=True)
 
-    # Converte DATA de forma explícita para datetime64[ns]
     df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").astype("datetime64[ns]")
 
     if "Total_SKUs" in df_diario.columns:
@@ -73,12 +74,16 @@ def build_processed_dataset():
         df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").astype("datetime64[ns]")
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer")
 
-    if "Total_Frete" not in df_diario.columns:
-        df_diario["Total_Frete"] = 0.0
+    # Garante a existência das colunas essenciais preenchidas com 0 nos nulos
+    for col in ["Total_PVs", "Saudavel", "Backlog", "Total_Expedidos", "Total_Frete", "Total_SKUs"]:
+        if col not in df_diario.columns:
+            df_diario[col] = 0
+        else:
+            df_diario[col] = pd.to_numeric(df_diario[col], errors="coerce").fillna(0)
 
-    # Preenchimento de nulos numéricos pós-merge sem alterar as colunas de datas/strings
-    num_cols = df_diario.select_dtypes(include=["number"]).columns
-    df_diario[num_cols] = df_diario[num_cols].fillna(0)
+    # Cria aliases em maiúsculo para compatibilidade retroativa
+    df_diario["SAUDAVEL"] = df_diario["Saudavel"]
+    df_diario["BACKLOG"] = df_diario["Backlog"]
 
     df_diario = df_diario.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
     return df_diario, df_fat_detalhado, df_frete_tratado

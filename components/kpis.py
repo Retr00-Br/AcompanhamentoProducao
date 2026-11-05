@@ -4,12 +4,21 @@ import streamlit as st
 
 def render_kpis_gerais(df_filtrado: pd.DataFrame):
     st.markdown("### 📊 Indicadores Gerais de Produção")
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📄 Total PVs", int(df_filtrado["Total_PVs"].sum()))
-    k2.metric("✅ Saudável", int(df_filtrado["SAUDAVEL"].sum()))
-    k3.metric("⚠️ Backlog", int(df_filtrado["BACKLOG"].sum()))
-    k4.metric("📦 Total SKUs/Linhas", int(df_filtrado["Total_SKUs"].sum()))
-    st.divider()
+    
+    total_pvs = int(df_filtrado["Total_PVs"].sum()) if "Total_PVs" in df_filtrado.columns else 0
+    
+    col_saudavel = "Saudavel" if "Saudavel" in df_filtrado.columns else "SAUDAVEL"
+    col_backlog = "Backlog" if "Backlog" in df_filtrado.columns else "BACKLOG"
+    
+    saudavel = int(df_filtrado[col_saudavel].sum()) if col_saudavel in df_filtrado.columns else 0
+    backlog = int(df_filtrado[col_backlog].sum()) if col_backlog in df_filtrado.columns else 0
+    total_skus = int(df_filtrado["Total_SKUs"].sum()) if "Total_SKUs" in df_filtrado.columns else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📄 Total PVs", f"{total_pvs}")
+    c2.metric("✅ Saudável", f"{saudavel}")
+    c3.metric("⚠️ Backlog", f"{backlog}")
+    c4.metric("📦 Total SKUs/Linhas", f"{total_skus}")
 
 
 def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
