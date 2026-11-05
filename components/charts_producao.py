@@ -11,7 +11,15 @@ def render_graficos_producao(df_filtrado: pd.DataFrame, col_fat_ativa: str, unid
         st.info("Sem registros de produção para o período selecionado.")
         return
 
-    df_chart = df_filtrado.copy()
+    # 🔒 FILTRO DE CORTE: Considera estritamente a partir do dia 07/10/2026
+    dt_corte = pd.to_datetime("2026-10-07")
+    df_chart = df_filtrado[df_filtrado["DATA"] >= dt_corte].copy().sort_values("DATA").reset_index(drop=True)
+
+    if df_chart.empty:
+        st.info("Sem dados de Saudável e Backlog para o período selecionado (Lançamentos iniciam em 07/10).")
+        return
+
+    df_chart["Data_Str"] = df_chart["DATA"].dt.strftime("%d/%m")
 
     y_saudavel = [int(v) for v in df_chart.get("Saudavel", pd.Series([0] * len(df_chart))).fillna(0)]
     y_backlog = [int(v) for v in df_chart.get("Backlog", pd.Series([0] * len(df_chart))).fillna(0)]
