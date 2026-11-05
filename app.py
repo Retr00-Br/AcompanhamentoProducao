@@ -20,7 +20,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def build_processed_dataset():
-    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário garantindo alinhamento de dtypes."""
+    """Unifica os dados de Produção, Faturamento e Frete no mesmo dataset diário harmonizando dtypes de DATA."""
     (
         df_prod_tratado,
         df_rom_tratado,
@@ -42,8 +42,8 @@ def build_processed_dataset():
         inplace=True,
     )
 
-    # 🔒 GARANTIA DE DTYPE: Converte DATA da base principal para datetime64
-    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce")
+    # Harmonização estrita do tipo datetime na chave de merge
+    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").dt.normalize()
 
     if "Total_SKUs" in df_diario.columns:
         df_diario["Total_SKUs"] = pd.to_numeric(df_diario["Total_SKUs"], errors="coerce").fillna(0)
@@ -53,14 +53,14 @@ def build_processed_dataset():
     # 2. Romaneios
     if df_rom_tratado is not None and not df_rom_tratado.empty:
         df_r = df_rom_tratado.groupby("DATA")["Qtd. Expedição"].sum().reset_index(name="Total_Expedidos")
-        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce")  # 🔒 Harmoniza dtype
+        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer").fillna(0)
     else:
         df_diario["Total_Expedidos"] = 0
 
     # 3. Faturamento
     if df_fat_unidades is not None and not df_fat_unidades.empty:
-        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce")  # 🔒 Harmoniza dtype
+        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer").fillna(0)
 
     # 4. Frete Terceirizado Agregado por Dia
@@ -70,7 +70,7 @@ def build_processed_dataset():
             .sum()
             .reset_index(name="Total_Frete")
         )
-        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce")  # 🔒 Harmoniza dtype
+        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer").fillna({"Total_Frete": 0.0})
 
     if "Total_Frete" not in df_diario.columns:
@@ -160,18 +160,18 @@ def main():
 
     # 1. KPIs Gerais
     render_kpis_gerais(df_filtrado)
-    
+
     # 2. Seção de Faturamento Monetário
     render_secao_faturamento(df_filtrado, unidade_selecionada)
-    
-    # 3. 🎯 GRÁFICO DE FATURAMENTO POR CLIENTE (Posicionado logo abaixo do Faturamento)
+
+    # 3. Top Clientes por Faturamento (Posicionado abaixo do Faturamento)
     render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
     # 4. Seção de Produção e Expedição
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
 
-    # 5. 🚚 SEÇÃO DE FRETE TERCEIRIZADO (Possui seu próprio filtro temporal independente)
+    # 5. Seção de Frete Terceirizado (Com filtro temporal independente)
     render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
 
     # 6. Tabela Consolidada Operacional
