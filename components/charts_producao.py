@@ -8,7 +8,7 @@ def render_graficos_producao(df_filtrado: pd.DataFrame, col_fat_ativa: str, unid
         st.info("Sem registros de produção para o período selecionado.")
         return
 
-    # 🔒 FILTRO DE CORTE: Considera a partir de 07/10/2026
+    # 🔒 CORTE TEMPORAL: Exibe a partir do dia 07/10/2026
     dt_corte = pd.to_datetime("2026-10-07")
     df_chart = df_filtrado[df_filtrado["DATA"] >= dt_corte].copy().sort_values("DATA").reset_index(drop=True)
 

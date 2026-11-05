@@ -4,7 +4,7 @@ import streamlit as st
 
 
 def get_data_filepath(filename: str) -> str:
-    """Retorna o caminho válido procurando no diretório `./data/` ou na raiz."""
+    """Retorna o caminho válido do arquivo procurando em ./data/ ou na raiz."""
     possible_paths = [
         os.path.join("./data", filename),
         filename,
@@ -19,7 +19,7 @@ def get_data_filepath(filename: str) -> str:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_dados_producao() -> pd.DataFrame:
-    """Carrega a base de Produção unificando PVs, SKUs, Saudável, Backlog e Notas Realizadas."""
+    """Carrega PVs, SKUs, Saudável, Backlog e Notas Realizadas (Status FATURADO)."""
     filepath = get_data_filepath("DadosProducao.xlsx")
     if not filepath:
         return pd.DataFrame()
@@ -28,6 +28,7 @@ def load_dados_producao() -> pd.DataFrame:
         excel = pd.ExcelFile(filepath)
         sheets = excel.sheet_names
 
+        # 1. Base principal (LimpezaDados ou DadosBrutos)
         if "LimpezaDados" in sheets:
             df_limpeza = pd.read_excel(excel, sheet_name="LimpezaDados")
         elif "DadosBrutos" in sheets:
@@ -38,7 +39,7 @@ def load_dados_producao() -> pd.DataFrame:
 
         df_limpeza["DATA"] = pd.to_datetime(df_limpeza["DATA"], errors="coerce").astype("datetime64[ns]")
 
-        # 1. Saudável e Backlog (DadosBacklogXSaudavel)
+        # 2. Resgate de Saudável e Backlog (DadosBacklogXSaudavel)
         if "DadosBacklogXSaudavel" in sheets:
             df_bs = pd.read_excel(excel, sheet_name="DadosBacklogXSaudavel")
             df_bs["DATA"] = pd.to_datetime(df_bs["DATA"], errors="coerce").astype("datetime64[ns]")
@@ -48,7 +49,7 @@ def load_dados_producao() -> pd.DataFrame:
             df_prod["Saudavel"] = 0
             df_prod["Backlog"] = 0
 
-        # 2. Total SKUs e Notas Realizadas (Status FATURADO em DadosBrutos)
+        # 3. Total SKUs e Notas Realizadas (DadosBrutos)
         if "DadosBrutos" in sheets:
             df_brutos = pd.read_excel(excel, sheet_name="DadosBrutos")
             df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce").astype("datetime64[ns]")
@@ -82,7 +83,7 @@ def load_dados_producao() -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_dados_romaneio() -> pd.DataFrame:
-    """Carrega os dados de Romaneios do arquivo DadosRomaneios.xlsx ou DadosRomaneio.xlsx."""
+    """Carrega os dados de Romaneios de DadosRomaneios.xlsx ou DadosRomaneio.xlsx."""
     filepath = get_data_filepath("DadosRomaneios.xlsx")
     if not filepath:
         filepath = get_data_filepath("DadosRomaneio.xlsx")
@@ -122,7 +123,7 @@ def load_dados_romaneio() -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_dados_faturamento() -> tuple:
-    """Carrega Faturamento Bruto e Detalhado por Cliente."""
+    """Carrega Faturamento Bruto por Filial e Faturamento Detalhado por Cliente."""
     filepath = get_data_filepath("DadosFaturamento.xlsx")
     if not filepath:
         return pd.DataFrame(), pd.DataFrame()
@@ -168,7 +169,7 @@ def load_dados_frete() -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_resumo_terceiros_MNOP() -> pd.DataFrame:
-    """Carrega o resumo por transportadora terceirizada."""
+    """Carrega o resumo por transportadora terceirizada para os gráficos de pizza."""
     filepath = get_data_filepath("DadosFrete.xlsx")
     if not filepath:
         return pd.DataFrame()
@@ -205,7 +206,7 @@ def load_resumo_terceiros_MNOP() -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_treated_data_cached():
-    """Retorna a tupla de datasets mantida para compatibilidade total."""
+    """Wrapper de dados central unificado."""
     df_prod_tratado = load_dados_producao()
     df_rom_tratado = load_dados_romaneio()
     df_fat_bruto_raw, df_fat_detalhado = load_dados_faturamento()
