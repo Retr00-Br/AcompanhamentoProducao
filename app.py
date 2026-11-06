@@ -51,7 +51,7 @@ def build_processed_dataset():
 
     df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").astype("datetime64[ns]")
 
-    # 2. Romaneios / Expedição (DadosRomaneios.xlsx)
+    # 2. Romaneios / Expedição
     if df_rom_tratado is not None and not df_rom_tratado.empty:
         col_exp = "Qtd. Expedição" if "Qtd. Expedição" in df_rom_tratado.columns else df_rom_tratado.columns[1]
         df_r = df_rom_tratado.groupby("DATA")[col_exp].sum().reset_index(name="Total_Expedidos")
@@ -101,7 +101,7 @@ def main():
         st.stop()
 
     # -------------------------------------------------------------
-    # 📅 FILTRO TEMPORAL GERAL
+    # 📅 FILTRO TEMPORAL GERAL (COM INTERVALO DE DATAS POR SEMANA)
     # -------------------------------------------------------------
     st.subheader("📅 Filtro Temporal Geral (Faturamento & Produção)")
     col_ft1, col_ft2 = st.columns([1.5, 3])
@@ -127,23 +127,38 @@ def main():
                 key="filtro_tempo_geral_dates",
             )
             dt_inicio, dt_fim = data_sel if isinstance(data_sel, tuple) and len(data_sel) == 2 else (min_date, max_date)
+
         elif tipo_filtro == "Por Mês":
             df_diario["Mes_Ano"] = df_diario["DATA"].dt.strftime("%Y-%m")
             meses = sorted(df_diario["Mes_Ano"].unique().tolist())
             mes_sel = st.selectbox("Selecione o Mês:", meses, index=len(meses) - 1, key="filtro_tempo_geral_mes")
             dt_inicio = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].min().date()
             dt_fim = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].max().date()
+
         else:
-            df_diario["Semana"] = (
-                "Semana "
-                + df_diario["DATA"].dt.isocalendar().week.astype(str)
-                + " / "
-                + df_diario["DATA"].dt.year.astype(str)
+            # 💡 NOMENCLATURA POR INTERVALO DE DATAS: "Semana do dia DD/MM - DD/MM"
+            df_diario["Semana_Inicio"] = df_diario["DATA"].apply(lambda d: d - pd.Timedelta(days=d.weekday()))
+            df_diario["Semana_Fim"] = df_diario["Semana_Inicio"] + pd.Timedelta(days=6)
+
+            df_diario["Semana_Label"] = (
+                "Semana do dia "
+                + df_diario["Semana_Inicio"].dt.strftime("%d/%m")
+                + " - "
+                + df_diario["Semana_Fim"].dt.strftime("%d/%m")
             )
-            semanas = df_diario["Semana"].unique().tolist()
-            semana_sel = st.selectbox("Selecione a Semana:", semanas, index=len(semanas) - 1, key="filtro_tempo_geral_semana")
-            dt_inicio = df_diario[df_diario["Semana"] == semana_sel]["DATA"].min().date()
-            dt_fim = df_diario[df_diario["Semana"] == semana_sel]["DATA"].max().date()
+
+            df_semanas_ord = df_diario.sort_values("Semana_Inicio")
+            semanas = df_semanas_ord["Semana_Label"].unique().tolist()
+
+            semana_sel = st.selectbox(
+                "Selecione a Semana:",
+                semanas,
+                index=len(semanas) - 1,
+                key="filtro_tempo_geral_semana",
+            )
+
+            dt_inicio = df_diario[df_diario["Semana_Label"] == semana_sel]["DATA"].min().date()
+            dt_fim = df_diario[df_diario["Semana_Label"] == semana_sel]["DATA"].max().date()
 
     df_filtrado = df_diario[
         (df_diario["DATA"].dt.date >= dt_inicio) & (df_diario["DATA"].dt.date <= dt_fim)
@@ -164,16 +179,16 @@ def main():
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    # 1. KPIs Gerais
+    # 1. KPIs Gerais do topo
     render_kpis_gerais(df_filtrado)
 
-    # 2. Seção de Faturamento Monetário
+    # 2. Seção de Faturamento Monetário e Devoluções
     render_secao_faturamento(df_filtrado, unidade_selecionada)
 
-    # 3. Top Clientes por Faturamento
+    # 3. Top Clientes por Faturamento (Acumulado x Mensal)
     render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
-    # 4. Seção de Produção e Expedição (Contém os 2 Gráficos de Produção)
+    # 4. Seção de Produção e Expedição
     render_kpis_medias(df_filtrado, unidade_selecionada)
     render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
 
