@@ -15,7 +15,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     col_fat_geral = "Todas as Unidades (Geral)_Fat" if "Todas as Unidades (Geral)_Fat" in df_diario.columns else col_fat_ativa
 
     # =========================================================================
-    # 1. COMPARATIVO MENSAL FRETE VS FATURAMENTO (KPIs ISOLADOS NO TOPO)
+    # 1. COMPARATIVO MENSAL FRETE VS FATURAMENTO (BARRA MENSAL DE FRETE)
     # =========================================================================
     st.markdown("### 📊 Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
 
@@ -42,7 +42,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     fig_comp = go.Figure()
 
-    # Barra 1: Faturamento Monetário Total
     fig_comp.add_trace(
         go.Bar(
             x=eixo_x_mes,
@@ -57,7 +56,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # Barra 2: Custo de Frete Terceirizado
     fig_comp.add_trace(
         go.Bar(
             x=eixo_x_mes,
@@ -72,7 +70,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # PORCENTAGENS ISOLADAS NO TOPO ABSOLUTO (Y FIXO ACIMA DA MAIOR BARRA)
     y_topo_absoluto = max_val_comp * 1.25
 
     for mes, p_val in zip(eixo_x_mes, pct_labels):
@@ -110,7 +107,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_comp, use_container_width=True)
 
     # =========================================================================
-    # 2. CALENDÁRIO ISOLADO + KPIS E GRÁFICO DIÁRIO
+    # 2. FILTRO TEMPORAL COMPLETO (CALENDÁRIO / MÊS / SEMANA) + KPIS E GRÁFICO
     # =========================================================================
     st.markdown("---")
     st.markdown("### 📈 Relação Diária: % do Custo de Frete sobre o Faturamento")
@@ -122,30 +119,74 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         how="inner",
     ).sort_values("DATA").reset_index(drop=True)
 
-    min_d_frete = df_diario_frete_base["DATA"].min().date()
-    max_d_frete = df_diario_frete_base["DATA"].max().date()
+    if df_diario_frete_base.empty:
+        st.info("Sem lançamentos de frete registrados.")
+        return
 
-    # 📅 CALENDÁRIO EXCLUSIVO (APENAS ALTERA ESSE GRÁFICO E SEUS KPIS)
-    col_cal1, col_cal2 = st.columns([2, 3])
-    with col_cal1:
-        sel_datas_frete = st.date_input(
-            "📅 Selecione o Intervalo de Datas exclusivo para o Frete Diário:",
-            value=(min_d_frete, max_d_frete),
-            min_value=min_d_frete,
-            max_value=max_d_frete,
-            key="calendario_exclusivo_frete_diario",
+    # 🎛️ FILTRO DE DATA EXCLUSIVO IDENTICO AO DO BI SUPERIOR
+    col_f1, col_f2 = st.columns([1.5, 3])
+
+    with col_f1:
+        tipo_filtro_frete = st.radio(
+            "Filtrar período do Frete por:",
+            ["Intervalo de Calendário", "Por Mês", "Por Semana do Ano"],
+            horizontal=True,
+            key="filtro_frete_radio",
         )
 
-    if isinstance(sel_datas_frete, tuple) and len(sel_datas_frete) == 2:
-        dt_start, dt_end = sel_datas_frete
-    else:
-        dt_start, dt_end = min_d_frete, max_d_frete
+    min_date_f = df_diario_frete_base["DATA"].min().date()
+    max_date_f = df_diario_frete_base["DATA"].max().date()
 
+    with col_f2:
+        if tipo_filtro_frete == "Intervalo de Calendário":
+            datas_frete_sel = st.date_input(
+                "Selecione o Período exclusivo para o Frete:",
+                value=(min_date_f, max_date_f),
+                min_value=min_date_f,
+                max_value=max_date_f,
+                key="filtro_frete_dates",
+            )
+            dt_inicio_f, dt_fim_f = (
+                datas_frete_sel if isinstance(datas_frete_sel, tuple) and len(datas_frete_sel) == 2 else (min_date_f, max_date_f)
+            )
+
+        elif tipo_filtro_frete == "Por Mês":
+            df_diario_frete_base["Mes_Ano"] = df_diario_frete_base["DATA"].dt.strftime("%Y-%m")
+            meses_f = sorted(df_diario_frete_base["Mes_Ano"].unique().tolist())
+            mes_sel_f = st.selectbox("Selecione o Mês:", meses_f, index=len(meses_f) - 1, key="filtro_frete_mes")
+            dt_inicio_f = df_diario_frete_base[df_diario_frete_base["Mes_Ano"] == mes_sel_f]["DATA"].min().date()
+            dt_fim_f = df_diario_frete_base[df_diario_frete_base["Mes_Ano"] == mes_sel_f]["DATA"].max().date()
+
+        else:
+            df_diario_frete_base["Semana_Inicio"] = df_diario_frete_base["DATA"].apply(lambda d: d - pd.Timedelta(days=d.weekday()))
+            df_diario_frete_base["Semana_Fim"] = df_diario_frete_base["Semana_Inicio"] + pd.Timedelta(days=6)
+
+            df_diario_frete_base["Semana_Label"] = (
+                "Semana do dia "
+                + df_diario_frete_base["Semana_Inicio"].dt.strftime("%d/%m")
+                + " - "
+                + df_diario_frete_base["Semana_Fim"].dt.strftime("%d/%m")
+            )
+
+            df_sem_f_ord = df_diario_frete_base.sort_values("Semana_Inicio")
+            semanas_f = df_sem_f_ord["Semana_Label"].unique().tolist()
+
+            semana_sel_f = st.selectbox(
+                "Selecione a Semana:",
+                semanas_f,
+                index=len(semanas_f) - 1,
+                key="filtro_frete_semana",
+            )
+
+            dt_inicio_f = df_diario_frete_base[df_diario_frete_base["Semana_Label"] == semana_sel_f]["DATA"].min().date()
+            dt_fim_f = df_diario_frete_base[df_diario_frete_base["Semana_Label"] == semana_sel_f]["DATA"].max().date()
+
+    # Filtragem efetiva dos dados do frete
     df_diario_frete = df_diario_frete_base[
-        (df_diario_frete_base["DATA"].dt.date >= dt_start) & (df_diario_frete_base["DATA"].dt.date <= dt_end)
+        (df_diario_frete_base["DATA"].dt.date >= dt_inicio_f) & (df_diario_frete_base["DATA"].dt.date <= dt_fim_f)
     ].copy().reset_index(drop=True)
 
-    # 🎯 KPIS ATUALIZADOS PELO CALENDÁRIO EXCLUSIVO
+    # 🎯 KPIS ATUALIZADOS PELO FILTRO SELECIONADO
     total_frete_sel = df_diario_frete["Valor Total Frete"].sum()
     total_fat_sel = df_diario_frete[col_fat_geral].sum()
     pct_frete_sel = (total_frete_sel / total_fat_sel * 100) if total_fat_sel > 0 else 0.0
@@ -158,29 +199,31 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     c4.metric("📅 Dias c/ Operação Frete", f"{dias_frete_sel} dias")
 
     if df_diario_frete.empty:
-        st.info("Sem lançamentos de frete no período selecionado no calendário.")
+        st.info("Sem lançamentos no período selecionado.")
         return
 
     df_diario_frete["Data_Str"] = df_diario_frete["DATA"].dt.strftime("%d/%m")
     df_diario_frete["Pct_Frete_Dia"] = (df_diario_frete["Valor Total Frete"] / df_diario_frete[col_fat_geral] * 100).fillna(0.0)
 
-    def fmt_val_completo(v):
+    # Formatador estrito monetário sem abreviações k/M
+    def fmt_val_exato(v):
         if v > 0:
             return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return ""
 
-    labels_barras = [fmt_val_completo(v) for v in df_diario_frete[col_fat_geral]]
+    labels_fat = [fmt_val_exato(v) for v in df_diario_frete[col_fat_geral]]
+    labels_pct = [f"{v:.2f}%" if v > 0 else "" for v in df_diario_frete["Pct_Frete_Dia"]]
 
     fig_diario = go.Figure()
 
-    # Colunas Azuis de Faturamento
+    # 1. Coluna de Faturamento (Azul) - Eixo Y1
     fig_diario.add_trace(
         go.Bar(
             x=df_diario_frete["Data_Str"],
             y=df_diario_frete[col_fat_geral],
             name="Faturamento (R$)",
-            marker=dict(color="#2b5c8f", line=dict(color="#000000", width=0.5)),
-            text=labels_barras,
+            marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
+            text=labels_fat,
             textposition="outside",
             textfont=dict(size=10, color="#000000", family="Arial Black"),
             cliponaxis=False,
@@ -189,18 +232,17 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # Linha Laranja de Porcentagem isolada no topo via eixo Y2 isolado
+    # 2. Coluna de % Frete / Faturamento (Laranja ao Lado do Faturamento) - Eixo Y2
     fig_diario.add_trace(
-        go.Scatter(
+        go.Bar(
             x=df_diario_frete["Data_Str"],
             y=df_diario_frete["Pct_Frete_Dia"],
             name="% Frete / Faturamento",
-            mode="lines+markers+text",
-            text=[f"<b>{v:.1f}%</b>" if v > 0 else "" for v in df_diario_frete["Pct_Frete_Dia"]],
-            textposition="top center",
+            marker=dict(color="#d97706", line=dict(color="#000000", width=0.8)),
+            text=labels_pct,
+            textposition="outside",
             textfont=dict(size=10, color="#d97706", family="Arial Black"),
-            line=dict(color="#d97706", width=2.5),
-            marker=dict(size=6, color="#d97706"),
+            cliponaxis=False,
             yaxis="y2",
             hovertemplate="<b>Data: %{x}</b><br>% Frete: %{y:.2f}%<extra></extra>",
         )
@@ -213,24 +255,28 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=12),
-        margin=dict(l=50, r=50, t=60, b=50),
+        font=dict(color="#000000", size=12, family="Arial"),
+        margin=dict(l=50, r=50, t=60, b=60),
         height=540,
+        barmode="group",
+        bargap=0.12,
+        bargroupgap=0.04,
         yaxis=dict(
-            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(color="#000000")),
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(color="#000000", size=13)),
             showgrid=True,
             gridcolor="#e9ecef",
             range=[0, max_fat * 1.35],
         ),
         yaxis2=dict(
-            title=dict(text="<b>% Frete / Faturamento</b>", font=dict(color="#d97706")),
+            title=dict(text="<b>% Frete / Faturamento</b>", font=dict(color="#d97706", size=13)),
             overlaying="y",
             side="right",
             showgrid=False,
             ticksuffix="%",
-            range=[0, max(max_pct * 1.45, 45.0)],  # Isola a linha no topo absoluto
+            range=[0, max(max_pct * 1.35, 40.0)],
         ),
-        legend=dict(orientation="h", y=1.14, x=1, xanchor="right"),
+        xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+        legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
     )
 
     st.plotly_chart(fig_diario, use_container_width=True)
