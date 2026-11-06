@@ -1,23 +1,6 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from utils.parser import fmt_brl
-
-
-def fmt_executivo_brl(val: float) -> str:
-    """Retorna o valor monetário abreviado para rótulos de gráfico (ex: R$ 457k, R$ 1,5M)."""
-    try:
-        if pd.isna(val) or val <= 0:
-            return ""
-        val = float(val)
-        if val >= 1_000_000:
-            return f"R$ {val / 1_000_000:.1f}M".replace(".", ",")
-        elif val >= 1_000:
-            return f"R$ {val / 1_000:.0f}k"
-        else:
-            return f"R$ {val:.0f}"
-    except Exception:
-        return ""
 
 
 def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str):
@@ -31,52 +14,62 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     col_fat = f"{unidade_selecionada}_Fat"
     col_dev = f"{unidade_selecionada}_Dev"
 
-    if col_fat not in df_filtrado.columns or col_dev not in df_filtrado.columns:
-        st.info("Dados de faturamento indisponíveis para esta unidade.")
-        return
+    if col_fat not in df_filtrado.columns:
+        col_fat = "Todas as Unidades (Geral)_Fat"
+    if col_dev not in df_filtrado.columns:
+        col_dev = "Todas as Unidades (Geral)_Dev"
 
-    df_chart = df_filtrado.copy()
-    df_chart["Dev_Positiva"] = df_chart[col_dev].abs()
-
+    df_chart = df_filtrado.copy().sort_values("DATA").reset_index(drop=True)
+    df_chart["Data_Str"] = df_chart["DATA"].dt.strftime("%d/%m")
     eixo_x = df_chart["Data_Str"].tolist()
-    y_fat = df_chart[col_fat].tolist()
-    y_dev = df_chart["Dev_Positiva"].tolist()
 
-    max_fat = max(y_fat) if y_fat else 1000.0
-    max_dev = max(y_dev) if y_dev else 1000.0
+    y_fat = df_chart[col_fat].fillna(0.0).tolist()
+    y_dev = df_chart[col_dev].fillna(0.0).tolist()
+
+    # Formatação legível dos valores (ex: R$ 100k, R$ 1.5M, etc)
+    def fmt_val(v):
+        if v >= 1_000_000:
+            return f"R$ {v/1_000_000:.1f}M"
+        elif v >= 1_000:
+            return f"R$ {v/1_000:.0f}k"
+        elif v > 0:
+            return f"R$ {v:.0f}"
+        return ""
+
+    labels_fat = [fmt_val(v) for v in y_fat]
+    labels_dev = [fmt_val(v) for v in y_dev]
+
+    max_val = max(max(y_fat, default=100), max(y_dev, default=100))
 
     fig = go.Figure()
 
-    # Barras de Faturamento com os valores RETOS no topo (textangle=0) e fonte legivel
+    # 1. Coluna de Faturamento (Azul)
     fig.add_trace(
         go.Bar(
             x=eixo_x,
             y=y_fat,
             name="Faturamento (R$)",
-            marker=dict(color="#0077b6", line=dict(color="#000000", width=1.0)),
-            text=[fmt_executivo_brl(v) for v in y_fat],
-            textfont=dict(color="#000000", size=11, family="Arial Black"),
-            textangle=0,  # Valores na horizontal (retos)
+            marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.5)),
+            text=labels_fat,
             textposition="outside",
+            textfont=dict(size=9, color="#000000", family="Arial Black"),
             cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
 
-    # Linha de Devoluções COM OS VALORES EXIBIDOS ACIMA DOS PONTOS (mode='lines+markers+text')
+    # 2. Coluna de Devoluções (Vermelha ao Lado do Faturamento)
     fig.add_trace(
-        go.Scatter(
+        go.Bar(
             x=eixo_x,
             y=y_dev,
             name="Devoluções (R$)",
-            mode="lines+markers+text",
-            marker=dict(color="#000000", size=7, symbol="square"),
-            line=dict(color="#000000", width=2.0),
-            text=[fmt_executivo_brl(v) if v > 0 else "" for v in y_dev],
-            textfont=dict(color="#000000", size=10, family="Arial Black"),
-            textposition="top center",
+            marker=dict(color="#d62728", line=dict(color="#000000", width=0.5)),
+            text=labels_dev,
+            textposition="outside",
+            textfont=dict(size=9, color="#d62728", family="Arial Black"),
+            cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Devolução: R$ %{y:,.2f}<extra></extra>",
-            yaxis="y2",
         )
     )
 
@@ -84,27 +77,19 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=12, family="Arial"),
-        margin=dict(l=50, r=60, t=70, b=60),
-        height=560,
-        bargap=0.18,
+        font=dict(color="#000000", size=11, family="Arial"),
+        margin=dict(l=50, r=50, t=50, b=60),
+        height=520,
+        barmode="group",  # Coloca as barras de Devoluções exatamente ao lado do Faturamento
+        bargap=0.20,
         yaxis=dict(
-            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
-            tickprefix="R$ ",
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=12, color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max_fat * 1.35],
+            range=[0, max_val * 1.30],
         ),
-        yaxis2=dict(
-            title=dict(text="<b>Devoluções (R$)</b>", font=dict(size=13, color="#000000")),
-            overlaying="y",
-            side="right",
-            tickprefix="R$ ",
-            showgrid=False,
-            range=[0, max(max_dev * 1.35, 1000.0)],
-        ),
-        xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
-        legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
+        xaxis=dict(type="category", tickfont=dict(size=10, color="#000000")),
+        legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=11, color="#000000")),
     )
 
     st.plotly_chart(fig, use_container_width=True)
