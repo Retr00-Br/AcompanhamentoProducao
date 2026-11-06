@@ -26,24 +26,20 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     y_fat = df_chart[col_fat].fillna(0.0).tolist()
     y_dev = df_chart[col_dev].fillna(0.0).tolist()
 
-    # Formatação legível e destacada dos valores nas colunas (ex: R$ 593k, R$ 1.4M)
-    def fmt_val(v):
-        if v >= 1_000_000:
-            return f"R$ {v/1_000_000:.1f}M"
-        elif v >= 1_000:
-            return f"R$ {v/1_000:.0f}k"
-        elif v > 0:
-            return f"R$ {v:.0f}"
+    # Formatação completa sem arredondamentos em k/M (Ex: R$ 845.230,50)
+    def fmt_val_completo(v):
+        if v > 0:
+            return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return ""
 
-    labels_fat = [fmt_val(v) for v in y_fat]
-    labels_dev = [fmt_val(v) for v in y_dev]
+    labels_fat = [fmt_val_completo(v) for v in y_fat]
+    labels_dev = [fmt_val_completo(v) for v in y_dev]
 
     max_val = max(max(y_fat, default=100), max(y_dev, default=100))
 
     fig = go.Figure()
 
-    # 1. Coluna de Faturamento (Azul) - Com fonte maior e colunas encorpadas
+    # 1. Coluna de Faturamento (Azul) - Com valor numérico completo
     fig.add_trace(
         go.Bar(
             x=eixo_x,
@@ -52,13 +48,13 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
             marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
             text=labels_fat,
             textposition="outside",
-            textfont=dict(size=11, color="#000000", family="Arial Black"),
+            textfont=dict(size=10, color="#000000", family="Arial Black"),
             cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
 
-    # 2. Coluna de Devoluções (Vermelha) - Ao lado do faturamento
+    # 2. Coluna de Devoluções (Vermelha) - Com valor numérico completo
     fig.add_trace(
         go.Bar(
             x=eixo_x,
@@ -81,13 +77,13 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         margin=dict(l=50, r=50, t=60, b=60),
         height=540,
         barmode="group",
-        bargap=0.12,          # Reduz o espaço entre dias para tornar as colunas mais LARGAS
-        bargroupgap=0.04,     # Ajusta a distância entre a barra azul e vermelha do mesmo dia
+        bargap=0.12,
+        bargroupgap=0.04,
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max_val * 1.30],
+            range=[0, max_val * 1.35],
         ),
         xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
         legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),

@@ -164,16 +164,12 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     df_diario_frete["Data_Str"] = df_diario_frete["DATA"].dt.strftime("%d/%m")
     df_diario_frete["Pct_Frete_Dia"] = (df_diario_frete["Valor Total Frete"] / df_diario_frete[col_fat_geral] * 100).fillna(0.0)
 
-    def fmt_val(v):
-        if v >= 1_000_000:
-            return f"R$ {v/1_000_000:.1f}M"
-        elif v >= 1_000:
-            return f"R$ {v/1_000:.0f}k"
-        elif v > 0:
-            return f"R$ {v:.0f}"
+    def fmt_val_completo(v):
+        if v > 0:
+            return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return ""
 
-    labels_barras = [fmt_val(v) for v in df_diario_frete[col_fat_geral]]
+    labels_barras = [fmt_val_completo(v) for v in df_diario_frete[col_fat_geral]]
 
     fig_diario = go.Figure()
 
