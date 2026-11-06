@@ -26,7 +26,7 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     y_fat = df_chart[col_fat].fillna(0.0).tolist()
     y_dev = df_chart[col_dev].fillna(0.0).tolist()
 
-    # Formatação legível dos valores (ex: R$ 100k, R$ 1.5M, etc)
+    # Formatação legível e destacada dos valores nas colunas (ex: R$ 593k, R$ 1.4M)
     def fmt_val(v):
         if v >= 1_000_000:
             return f"R$ {v/1_000_000:.1f}M"
@@ -43,31 +43,31 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
     fig = go.Figure()
 
-    # 1. Coluna de Faturamento (Azul)
+    # 1. Coluna de Faturamento (Azul) - Com fonte maior e colunas encorpadas
     fig.add_trace(
         go.Bar(
             x=eixo_x,
             y=y_fat,
             name="Faturamento (R$)",
-            marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.5)),
+            marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
             text=labels_fat,
             textposition="outside",
-            textfont=dict(size=9, color="#000000", family="Arial Black"),
+            textfont=dict(size=11, color="#000000", family="Arial Black"),
             cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
 
-    # 2. Coluna de Devoluções (Vermelha ao Lado do Faturamento)
+    # 2. Coluna de Devoluções (Vermelha) - Ao lado do faturamento
     fig.add_trace(
         go.Bar(
             x=eixo_x,
             y=y_dev,
             name="Devoluções (R$)",
-            marker=dict(color="#d62728", line=dict(color="#000000", width=0.5)),
+            marker=dict(color="#d62728", line=dict(color="#000000", width=0.8)),
             text=labels_dev,
             textposition="outside",
-            textfont=dict(size=9, color="#d62728", family="Arial Black"),
+            textfont=dict(size=10, color="#d62728", family="Arial Black"),
             cliponaxis=False,
             hovertemplate="<b>Data: %{x}</b><br>Devolução: R$ %{y:,.2f}<extra></extra>",
         )
@@ -77,19 +77,20 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=11, family="Arial"),
-        margin=dict(l=50, r=50, t=50, b=60),
-        height=520,
-        barmode="group",  # Coloca as barras de Devoluções exatamente ao lado do Faturamento
-        bargap=0.20,
+        font=dict(color="#000000", size=12, family="Arial"),
+        margin=dict(l=50, r=50, t=60, b=60),
+        height=540,
+        barmode="group",
+        bargap=0.12,          # Reduz o espaço entre dias para tornar as colunas mais LARGAS
+        bargroupgap=0.04,     # Ajusta a distância entre a barra azul e vermelha do mesmo dia
         yaxis=dict(
-            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=12, color="#000000")),
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
             range=[0, max_val * 1.30],
         ),
-        xaxis=dict(type="category", tickfont=dict(size=10, color="#000000")),
-        legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=11, color="#000000")),
+        xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+        legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
     )
 
     st.plotly_chart(fig, use_container_width=True)
