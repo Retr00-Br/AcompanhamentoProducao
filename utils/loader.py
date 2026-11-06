@@ -19,7 +19,7 @@ def get_data_filepath(filename: str) -> str:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_dados_producao() -> pd.DataFrame:
-    """Carrega PVs, SKUs, Saudável, Backlog e Notas Realizadas (Status FATURADO)."""
+    """Carrega a base de Produção garantindo que as Notas Realizadas reflitam a aba LimpezaDados sem perdas."""
     filepath = get_data_filepath("DadosProducao.xlsx")
     if not filepath:
         return pd.DataFrame()
@@ -28,7 +28,7 @@ def load_dados_producao() -> pd.DataFrame:
         excel = pd.ExcelFile(filepath)
         sheets = excel.sheet_names
 
-        # 1. Base principal (LimpezaDados ou DadosBrutos)
+        # 1. Base oficial de Notas Realizadas / Produção (LimpezaDados)
         if "LimpezaDados" in sheets:
             df_limpeza = pd.read_excel(excel, sheet_name="LimpezaDados")
         elif "DadosBrutos" in sheets:
@@ -38,6 +38,8 @@ def load_dados_producao() -> pd.DataFrame:
             return pd.DataFrame()
 
         df_limpeza["DATA"] = pd.to_datetime(df_limpeza["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_limpeza.rename(columns={"Quantidade": "Notas_Realizadas"}, inplace=True)
+        df_limpeza["Quantidade"] = df_limpeza["Notas_Realizadas"]
 
         # 2. Resgate de Saudável e Backlog (DadosBacklogXSaudavel)
         if "DadosBacklogXSaudavel" in sheets:
@@ -49,7 +51,7 @@ def load_dados_producao() -> pd.DataFrame:
             df_prod["Saudavel"] = 0
             df_prod["Backlog"] = 0
 
-        # 3. Total SKUs e Notas Realizadas (DadosBrutos)
+        # 3. Total SKUs (DadosBrutos)
         if "DadosBrutos" in sheets:
             df_brutos = pd.read_excel(excel, sheet_name="DadosBrutos")
             df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce").astype("datetime64[ns]")
@@ -57,22 +59,14 @@ def load_dados_producao() -> pd.DataFrame:
             col_sku = "SKU'S" if "SKU'S" in df_brutos.columns else ("SKUS" if "SKUS" in df_brutos.columns else df_brutos.columns[0])
             df_skus = df_brutos.groupby("DATA")[col_sku].count().reset_index(name="Total_SKUs")
             df_prod = pd.merge(df_prod, df_skus, on="DATA", how="outer")
-
-            if "STATUS PRODUÇÃO" in df_brutos.columns:
-                df_fat = df_brutos[df_brutos["STATUS PRODUÇÃO"].astype(str).str.upper() == "FATURADO"]
-                df_realizadas = df_fat.groupby("DATA")["PV"].count().reset_index(name="Notas_Realizadas")
-                df_prod = pd.merge(df_prod, df_realizadas, on="DATA", how="left")
-            else:
-                df_prod["Notas_Realizadas"] = df_prod["Quantidade"]
         else:
             df_prod["Total_SKUs"] = df_prod["Quantidade"]
-            df_prod["Notas_Realizadas"] = df_prod["Quantidade"]
 
         df_prod["Quantidade"] = pd.to_numeric(df_prod["Quantidade"], errors="coerce").fillna(0)
+        df_prod["Notas_Realizadas"] = pd.to_numeric(df_prod["Notas_Realizadas"], errors="coerce").fillna(0)
         df_prod["Saudavel"] = pd.to_numeric(df_prod["Saudavel"], errors="coerce").fillna(0)
         df_prod["Backlog"] = pd.to_numeric(df_prod["Backlog"], errors="coerce").fillna(0)
         df_prod["Total_SKUs"] = pd.to_numeric(df_prod["Total_SKUs"], errors="coerce").fillna(0)
-        df_prod["Notas_Realizadas"] = pd.to_numeric(df_prod["Notas_Realizadas"], errors="coerce").fillna(df_prod["Quantidade"])
 
         return df_prod.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
 
