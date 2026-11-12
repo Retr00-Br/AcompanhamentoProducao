@@ -2,6 +2,7 @@ import urllib.request
 import json
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 
@@ -31,7 +32,6 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     df = df_fat_detalhado.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Normaliza nomes das colunas esperadas: ['Mês', 'Filial', 'Loja', 'UF', 'Cliente', 'R$ Fatur.']
     col_valor = next((c for c in df.columns if "FATUR" in c.upper() or "VALOR" in c.upper()), df.columns[-1])
     df[col_valor] = pd.to_numeric(df[col_valor], errors="coerce").fillna(0.0)
 
@@ -50,64 +50,122 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     if "Cliente" in df.columns:
         df["Cliente"] = df["Cliente"].fillna("NÃO INFORMADO").astype(str).str.strip().str.upper()
 
-    # Filtro opcional por Mês na aba de clientes
-    if "Mês" in df.columns:
-        df["Mes_Dt"] = pd.to_datetime(df["Mês"], errors="coerce")
-        meses_disp = sorted(df["Mes_Dt"].dropna().dt.strftime("%Y-%m").unique().tolist())
-        if meses_disp:
-            opcoes_mes = ["Todos os Meses (Acumulado)"] + meses_disp
-            mes_cli_sel = st.selectbox(
-                "📅 Filtrar Competência (Clientes & UFs):",
-                opcoes_mes,
-                index=0,
-                key="filtro_mes_top10_clientes",
-            )
-            if mes_cli_sel != "Todos os Meses (Acumulado)":
-                df = df[df["Mes_Dt"].dt.strftime("%Y-%m") == mes_cli_sel].copy()
-
     # Filtro por Filial caso não seja Geral
     if "Filial" in df.columns and unidade_selecionada != "Todas as Unidades (Geral)":
         cod_filial = unidade_selecionada.split("-")[0].strip().lstrip("0")
         df["Filial_Str"] = df["Filial"].astype(str).str.strip().str.lstrip("0")
         if cod_filial in df["Filial_Str"].unique():
             df = df[df["Filial_Str"] == cod_filial].copy()
+        else:
+            st.info(f"A aba 'Faturamento por cliente' não possui lançamentos registrados para a filial {unidade_selecionada}.")
+            return
 
     if df.empty:
         st.warning("Nenhum faturamento encontrado para o filtro selecionado.")
         return
 
-    total_faturado_geral = df[col_valor].sum()
+    if "Mês" in df.columns:
+        df["Mes_Dt"] = pd.to_datetime(df["Mês"], errors="coerce")
+        df["Mes_Str"] = df["Mes_Dt"].dt.strftime("%Y-%m")
+    else:
+        df["Mes_Str"] = "Total"
+
+    df["Cliente_Loja_UF"] = df["Cliente"] + " (Lj " + df["Loja"] + " - " + df["UF"] + ")"
 
     # =========================================================================
-    # 1. TOP 10 CLIENTES DIFERENCIADOS POR CLIENTE + LOJA + UF
+    # 1. RANKING TOP 10 CLIENTES (DIFERENCIADO POR LOJA & UF) EM GRÁFICO DE LINHAS
     # =========================================================================
-    df_top10 = (
-        df.groupby(["Cliente", "Loja", "UF"], as_index=False)[col_valor]
+    st.markdown("#### 📈 Ranking Top 10 Clientes (Diferenciado por Loja & UF) — Evolução Mensal")
+
+    ranking_acum = (
+        df.groupby(["Cliente_Loja_UF", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
         .sum()
         .sort_values(col_valor, ascending=False)
         .head(10)
         .reset_index(drop=True)
     )
-    df_top10.index = df_top10.index + 1
-    df_top10.index.name = "Rank"
 
-    df_top10["Participacao"] = (df_top10[col_valor] / total_faturado_geral * 100) if total_faturado_geral > 0 else 0.0
-    df_top10["Valor_Faturado_Str"] = df_top10[col_valor].apply(_format_brl)
-    df_top10["Participacao_Str"] = df_top10["Participacao"].apply(lambda p: f"{p:.2f}%")
+    top10_labels = ranking_acum["Cliente_Loja_UF"].tolist()
 
-    st.markdown("#### 🥇 Ranking Top 10 Clientes (Diferenciado por Loja & UF)")
-    st.dataframe(
-        df_top10[["Cliente", "Loja", "UF", "Valor_Faturado_Str", "Participacao_Str"]].rename(
-            columns={
-                "Cliente": "Cliente",
-                "Loja": "Loja",
-                "UF": "UF",
-                "Valor_Faturado_Str": "Valor Faturado (R$)",
-                "Participacao_Str": "% Representatividade",
-            }
-        ),
-        use_container_width=True,
+    clientes_visiveis = st.multiselect(
+        "Selecionar Clientes do Top 10 para exibir no gráfico de linhas:",
+        options=top10_labels,
+        default=top10_labels,
+        key="multiselect_top10_linhas",
     )
+
+    df_top10_series = df[df["Cliente_Loja_UF"].isin(clientes_visiveis)].copy()
+    meses_ordenados = sorted(df["Mes_Str"].dropna().unique().tolist())
+
+    fig_linhas = go.Figure()
+
+    for idx_rank, row_top in ranking_acum.iterrows():
+        label_cli = row_top["Cliente_Loja_UF"]
+        if label_cli not in clientes_visiveis:
+            continue
+
+        total_cli = row_top[col_valor]
+        df_c = (
+            df_top10_series[df_top10_series["Cliente_Loja_UF"] == label_cli]
+            .groupby("Mes_Str")[col_valor]
+            .sum()
+            .reindex(meses_ordenados, fill_value=0.0)
+            .reset_index()
+        )
+        df_c.columns = ["Mes_Str", "Valor"]
+
+        fig_linhas.add_trace(
+            go.Scatter(
+                x=df_c["Mes_Str"],
+                y=df_c["Valor"],
+                mode="lines+markers+text",
+                name=f"#{idx_rank + 1} {label_cli} ({_format_brl(total_cli)})",
+                line=dict(width=3),
+                marker=dict(size=9),
+                text=[_format_brl(v) if v > 0 else "" for v in df_c["Valor"]],
+                textposition="top center",
+                textfont=dict(size=9),
+                hovertemplate=(
+                    f"<b>#{idx_rank + 1} {label_cli}</b><br>"
+                    "Mês: %{x}<br>"
+                    "Faturamento: R$ %{y:,.2f}<br>"
+                    f"Acumulado Período: {_format_brl(total_cli)}<extra></extra>"
+                ),
+            )
+        )
+
+    max_y_linhas = df_top10_series.groupby(["Cliente_Loja_UF", "Mes_Str"])[col_valor].sum().max() if not df_top10_series.empty else 100.0
+
+    fig_linhas.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=12, family="Arial"),
+        height=560,
+        margin=dict(l=50, r=40, t=40, b=50),
+        hovermode="x unified",
+        xaxis=dict(
+            title=dict(text="<b>Competência (Mês)</b>", font=dict(size=13, color="#000000")),
+            type="category",
+            showgrid=True,
+            gridcolor="#e9ecef",
+        ),
+        yaxis=dict(
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
+            showgrid=True,
+            gridcolor="#e9ecef",
+            range=[0, max(max_y_linhas * 1.18, 100.0)],
+        ),
+        legend=dict(
+            orientation="v",
+            y=1.0,
+            x=1.02,
+            xanchor="left",
+            font=dict(size=11, color="#000000"),
+        ),
+    )
+
+    st.plotly_chart(fig_linhas, use_container_width=True)
 
     # =========================================================================
     # 2. MAPA DO BRASIL POR UF + RANKING DE FATURAMENTO POR UF
@@ -115,8 +173,22 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     st.markdown("---")
     st.markdown("#### 🗺️ Mapa de Faturamento por Estado (UF) & Ranking Regional")
 
+    if len(meses_ordenados) > 1:
+        opcoes_mes_uf = ["Todos os Meses (Acumulado)"] + meses_ordenados
+        mes_uf_sel = st.selectbox(
+            "📅 Filtrar Competência (Mapa & Ranking por UF):",
+            opcoes_mes_uf,
+            index=0,
+            key="filtro_mes_uf_mapa",
+        )
+        df_uf_base = df[df["Mes_Str"] == mes_uf_sel].copy() if mes_uf_sel != "Todos os Meses (Acumulado)" else df.copy()
+    else:
+        df_uf_base = df.copy()
+
+    total_faturado_geral = df_uf_base[col_valor].sum()
+
     df_uf = (
-        df[df["UF"].str.len() == 2]
+        df_uf_base[df_uf_base["UF"].str.len() == 2]
         .groupby("UF", as_index=False)
         .agg(
             Valor_Faturado=(col_valor, "sum"),
