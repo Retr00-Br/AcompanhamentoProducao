@@ -14,7 +14,7 @@ def get_data_filepath(filename: str) -> str:
 
 
 def get_frete_filepath() -> str:
-    """Localiza a planilha de Custo de Fretes mais recente (por data de modificação) em ./data/ ou na raiz."""
+    """Localiza a planilha de Custo de Fretes mais recente em ./data/ ou na raiz."""
     candidatos = []
     for folder in ["./data/", "."]:
         if os.path.exists(folder):
@@ -26,13 +26,12 @@ def get_frete_filepath() -> str:
     if not candidatos:
         return ""
 
-    # Ordena do mais recente para o mais antigo para garantir leitura da versão mais nova (_4.xlsx, etc.)
     candidatos.sort(key=lambda x: x[0], reverse=True)
     return candidatos[0][1]
 
 
 def _get_files_signature() -> str:
-    """Gera uma assinatura baseada no nome e timestamp dos arquivos Excel para invalidar cache ao atualizar planilhas."""
+    """Gera assinatura baseada no timestamp dos arquivos Excel."""
     sigs = []
     for folder in ["./data/", "."]:
         if os.path.exists(folder):
@@ -154,7 +153,6 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        # sheet_name=None lê todas as abas do arquivo Excel em um dicionário {nome_aba: DataFrame}
         todas_abas = pd.read_excel(filepath, sheet_name=None)
         dfs_abas = []
 

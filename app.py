@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from utils.loader import load_treated_data_cached, _get_files_signature
+from utils.loader import load_treated_data_cached
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
 from components.kpis import render_kpis_gerais, render_kpis_medias
@@ -16,6 +16,18 @@ st.set_page_config(
     page_icon="📦",
     layout="wide",
 )
+
+
+def get_local_files_signature() -> str:
+    """Gera assinatura local dos arquivos Excel para atualizar o cache automaticamente."""
+    sigs = []
+    for folder in ["./data/", "."]:
+        if os.path.exists(folder):
+            for fname in sorted(os.listdir(folder)):
+                if fname.endswith(".xlsx") and not fname.startswith("~$"):
+                    fp = os.path.join(folder, fname)
+                    sigs.append(f"{fp}:{os.path.getmtime(fp)}:{os.path.getsize(fp)}")
+    return "|".join(sigs)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -94,7 +106,7 @@ def main():
     ui.render_header()
 
     os.makedirs("./data/", exist_ok=True)
-    sig = _get_files_signature()
+    sig = get_local_files_signature()
     df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset(sig)
 
     if df_diario is None or df_diario.empty:
