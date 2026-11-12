@@ -20,7 +20,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     df_f["DATA"] = pd.to_datetime(df_f["DATA"]).dt.normalize()
 
     # =========================================================================
-    # 1. COMPARATIVO MENSAL: FATURAMENTO DO MÊS X VALOR GASTO TOTAL DO FRETE
+    # 1. COMPARATIVO MENSAL FRETE VS FATURAMENTO MONETÁRIO (INALTERADO)
     # =========================================================================
     st.markdown("### 📊 Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
 
@@ -285,7 +285,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_diario, use_container_width=True)
 
     # =========================================================================
-    # 3. PIZZAS E TABELA TERCEIROS (CONSOLIDADO COLUNAS A-U DE TODAS AS ABAS)
+    # 3. PIZZAS E TABELA TERCEIROS (ÚLTIMA TABELA DE CADA ABA: RÓTULOS DE LINHA | VLR NF | VL FRETE | %)
     # =========================================================================
     df_mnop_clean = load_resumo_terceiros_MNOP()
 
@@ -362,3 +362,112 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
 
         st.dataframe(df_tabela_final, use_container_width=True)
+
+        # =====================================================================
+        # 4. NOVO KPI & GRÁFICO: VALOR TOTAL NFs X FRETE X % POR TRANSPORTADORA
+        # (Exatamente igual ao modelo do gráfico "Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
+        # =====================================================================
+        st.markdown("---")
+        st.markdown("### 📊 Comparativo por Transportadora: Valor Total das NFs vs. Custo de Frete (% Frete / NF)")
+
+        total_nf_transp = df_mnop_clean["Valor_NF"].sum()
+        total_fr_transp = df_mnop_clean["Valor_Frete"].sum()
+        pct_medio_transp = (total_fr_transp / total_nf_transp * 100) if total_nf_transp > 0 else 0.0
+        top_transp_nome = df_mnop_clean.iloc[0]["Transportadora"]
+        top_transp_val = df_mnop_clean.iloc[0]["Valor_Frete"]
+
+        kt1, kt2, kt3, kt4 = st.columns(4)
+        kt1.metric("📄 Valor Total NFs (Transportadoras)", f"R$ {total_nf_transp:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        kt2.metric("🚚 Custo Total Frete (Transportadoras)", f"R$ {total_fr_transp:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        kt3.metric("📊 % Médio Frete / Valor NFs", f"{pct_medio_transp:.2f}%")
+        kt4.metric(
+            "🏆 Maior Custo Transportadora",
+            top_transp_nome[:22],
+            delta=f"R$ {top_transp_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            delta_color="off",
+        )
+
+        top_n_opcoes = [10, 15, 20, len(df_mnop_clean)]
+        top_n_labels = ["Top 10 Transportadoras", "Top 15 Transportadoras", "Top 20 Transportadoras", "Todas as Transportadoras"]
+        sel_top_idx = st.selectbox(
+            "Exibir no gráfico comparativo:",
+            range(len(top_n_labels)),
+            format_func=lambda i: top_n_labels[i],
+            index=0,
+            key="sel_top_transp_comp",
+        )
+        limite_transp = top_n_opcoes[sel_top_idx]
+
+        df_plot_tr = df_mnop_clean.head(limite_transp).copy().reset_index(drop=True)
+        eixo_x_tr = df_plot_tr["Transportadora"].tolist()
+        y_nf_tr = df_plot_tr["Valor_NF"].tolist()
+        y_fr_tr = df_plot_tr["Valor_Frete"].tolist()
+        pct_tr_list = (df_plot_tr["Pct_Frete"] * 100).tolist()
+
+        max_val_tr = max(max(y_nf_tr, default=100), max(y_fr_tr, default=100))
+
+        fig_tr_comp = go.Figure()
+
+        fig_tr_comp.add_trace(
+            go.Bar(
+                x=eixo_x_tr,
+                y=y_nf_tr,
+                name="Valor Total NFs (R$)",
+                marker=dict(color="#1f77b4", line=dict(color="#000000", width=1.0)),
+                text=[f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in y_nf_tr],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000"),
+                cliponaxis=False,
+                hovertemplate="<b>%{x}</b><br>Vlr. Nota Fiscal: R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+
+        fig_tr_comp.add_trace(
+            go.Bar(
+                x=eixo_x_tr,
+                y=y_fr_tr,
+                name="Custo de Frete (R$)",
+                marker=dict(color="#d62728", line=dict(color="#000000", width=1.0)),
+                text=[f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in y_fr_tr],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000"),
+                cliponaxis=False,
+                hovertemplate="<b>%{x}</b><br>VL. FRETE: R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+
+        y_topo_tr = max_val_tr * 1.25
+
+        for tr_nome, p_tr in zip(eixo_x_tr, pct_tr_list):
+            fig_tr_comp.add_annotation(
+                x=tr_nome,
+                y=y_topo_tr,
+                text=f"<b>% Frete: {p_tr:.1f}%</b>",
+                showarrow=False,
+                font=dict(size=11, color="#d62728", family="Arial Black"),
+                bgcolor="#f8d7da",
+                bordercolor="#f5c6cb",
+                borderwidth=1,
+                borderpad=5,
+            )
+
+        fig_tr_comp.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#000000", size=12, family="Arial"),
+            margin=dict(l=50, r=50, t=70, b=110),
+            height=580,
+            barmode="group",
+            bargap=0.25,
+            yaxis=dict(
+                title=dict(text="<b>Valor Monetário (R$)</b>", font=dict(size=13, color="#000000")),
+                showgrid=True,
+                gridcolor="#e9ecef",
+                range=[0, max_val_tr * 1.42],
+            ),
+            xaxis=dict(type="category", tickangle=-25, tickfont=dict(size=10, color="#000000")),
+            legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=12, color="#000000")),
+        )
+
+        st.plotly_chart(fig_tr_comp, use_container_width=True)

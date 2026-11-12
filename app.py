@@ -2,7 +2,11 @@ import os
 import pandas as pd
 import streamlit as st
 
-from utils.loader import load_treated_data_cached
+from utils.loader import (
+    load_treated_data_cached,
+    load_dados_sla,
+    load_pedidos_producao_brutos,
+)
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
 from components.kpis import render_kpis_gerais, render_kpis_medias
@@ -10,6 +14,7 @@ from components.charts_faturamento import render_secao_faturamento
 from components.charts_producao import render_graficos_producao
 from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
+from components.sla_farol import render_secao_sla
 
 st.set_page_config(
     page_title="Dashboard Operacional & BI",
@@ -19,12 +24,12 @@ st.set_page_config(
 
 
 def get_local_files_signature() -> str:
-    """Gera assinatura local dos arquivos Excel para atualizar o cache automaticamente."""
+    """Gera assinatura local dos arquivos para atualizar o cache automaticamente."""
     sigs = []
     for folder in ["./data/", "."]:
         if os.path.exists(folder):
             for fname in sorted(os.listdir(folder)):
-                if fname.endswith(".xlsx") and not fname.startswith("~$"):
+                if fname.lower().endswith((".xlsx", ".xls", ".csv")) and not fname.startswith("~$"):
                     fp = os.path.join(folder, fname)
                     sigs.append(f"{fp}:{os.path.getmtime(fp)}:{os.path.getsize(fp)}")
     return "|".join(sigs)
@@ -108,6 +113,8 @@ def main():
     os.makedirs("./data/", exist_ok=True)
     sig = get_local_files_signature()
     df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset(sig)
+    df_sla = load_dados_sla(sig)
+    df_pedidos_brutos = load_pedidos_producao_brutos(sig)
 
     if df_diario is None or df_diario.empty:
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
@@ -194,10 +201,11 @@ def main():
     # =========================================================================
     # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS
     # =========================================================================
-    tab_fat, tab_prod, tab_frete, tab_tabela = st.tabs([
+    tab_fat, tab_prod, tab_frete, tab_sla, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
         "🚚 Gestão & Custo de Frete",
+        "🚦 Farol SLA & Operação",
         "📜 Base Consolidada",
     ])
 
@@ -212,6 +220,9 @@ def main():
 
     with tab_frete:
         render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
+
+    with tab_sla:
+        render_secao_sla(df_sla, df_pedidos_brutos)
 
     with tab_tabela:
         render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)

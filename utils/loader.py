@@ -30,13 +30,30 @@ def get_frete_filepath() -> str:
     return candidatos[0][1]
 
 
+def get_sla_filepath() -> str:
+    """Localiza o arquivo SLA.xls ou SLA.xlsx em ./data/ ou na raiz."""
+    candidatos = []
+    for folder in ["./data/", "."]:
+        if os.path.exists(folder):
+            for fname in os.listdir(folder):
+                if "SLA" in fname.upper() and fname.lower().endswith((".xls", ".xlsx", ".csv")) and not fname.startswith("~$"):
+                    full_path = os.path.join(folder, fname)
+                    candidatos.append((os.path.getmtime(full_path), full_path))
+
+    if not candidatos:
+        return ""
+
+    candidatos.sort(key=lambda x: x[0], reverse=True)
+    return candidatos[0][1]
+
+
 def _get_files_signature() -> str:
-    """Gera assinatura baseada no timestamp e tamanho dos arquivos Excel."""
+    """Gera assinatura baseada no timestamp e tamanho dos arquivos de dados."""
     sigs = []
     for folder in ["./data/", "."]:
         if os.path.exists(folder):
             for fname in sorted(os.listdir(folder)):
-                if fname.endswith(".xlsx") and not fname.startswith("~$"):
+                if fname.lower().endswith((".xlsx", ".xls", ".csv")) and not fname.startswith("~$"):
                     fp = os.path.join(folder, fname)
                     sigs.append(f"{fp}:{os.path.getmtime(fp)}:{os.path.getsize(fp)}")
     return "|".join(sigs)
@@ -93,6 +110,27 @@ def load_dados_producao(_sig: str = "") -> pd.DataFrame:
 
     except Exception as e:
         st.error(f"Erro ao carregar DadosProducao.xlsx: {e}")
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_pedidos_producao_brutos(_sig: str = "") -> pd.DataFrame:
+    """Carrega a aba DadosBrutos de DadosProducao.xlsx para monitoramento operacional do dia e urgências."""
+    filepath = get_data_filepath("DadosProducao.xlsx")
+    if not filepath:
+        return pd.DataFrame()
+
+    try:
+        excel = pd.ExcelFile(filepath)
+        if "DadosBrutos" not in excel.sheet_names:
+            return pd.DataFrame()
+
+        df_b = pd.read_excel(excel, sheet_name="DadosBrutos")
+        df_b.columns = [str(c).strip() for c in df_b.columns]
+        if "DATA" in df_b.columns:
+            df_b["DATA"] = pd.to_datetime(df_b["DATA"], errors="coerce").dt.normalize()
+        return df_b.dropna(subset=["DATA"]).sort_values("DATA", ascending=False).reset_index(drop=True)
+    except Exception:
         return pd.DataFrame()
 
 
@@ -160,7 +198,6 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
             if df_raw is None or df_raw.empty:
                 continue
 
-            # Restringe estritamente às colunas A até U (21 primeiras colunas)
             df_sheet = df_raw.iloc[:, :21].copy()
             df_sheet.columns = [str(c).strip() for c in df_sheet.columns]
 
@@ -180,7 +217,6 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
                 elif c_up in ["VLR_NOTA_FISCAL", "NOTA_FISCAL", "VLR NOTA FISCAL"]:
                     col_nf = c
 
-            # Fallback posicional padrão dentro de A-U
             if col_valor is None and df_sheet.shape[1] > 2:
                 col_valor = df_sheet.columns[2]
             if col_transp is None and df_sheet.shape[1] > 3:
@@ -221,7 +257,7 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
-    """Lê e consolida o resumo lateral por transportadora dentro das colunas A-U de TODAS as abas da planilha de frete."""
+    """Lê e consolida a última tabela de cada aba (Rótulos de Linha | Vlr. Nota Fiscal | VL. FRETE | %) dentro de A-U."""
     filepath = get_frete_filepath()
     if not filepath:
         return pd.DataFrame()
@@ -234,7 +270,6 @@ def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
             if df_raw is None or df_raw.empty:
                 continue
 
-            # Considera estritamente as colunas A até U
             df_au = df_raw.iloc[:, :21].copy()
             cols_upper = [str(c).strip().upper() for c in df_au.columns]
 
@@ -254,6 +289,7 @@ def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
                 ]
                 df_sub["Valor_NF"] = pd.to_numeric(df_sub["Valor_NF"], errors="coerce").fillna(0.0)
                 df_sub["Valor_Frete"] = pd.to_numeric(df_sub["Valor_Frete"], errors="coerce").fillna(0.0)
+                df_sub["Aba_Origem"] = str(nome_aba).strip()
                 dfs_resumo.append(df_sub)
 
         if not dfs_resumo:
@@ -274,8 +310,61 @@ def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def load_dados_sla(_sig: str = "") -> pd.DataFrame:
+    """Lê a planilha SLA.xls (suportando TSV/CSV exportado do ERP e Excel nativo) e aplica as regras oficiais de SLA."""
+    filepath = get_sla_filepath()
+    if not filepath:
+        return pd.DataFrame()
+
+    df_raw = None
+    try:
+        df_raw = pd.read_excel(filepath)
+    except Exception:
+        for enc in ["latin1", "utf-8", "cp1252"]:
+            try:
+                df_raw = pd.read_csv(filepath, sep="\t", encoding=enc)
+                break
+            except Exception:
+                continue
+
+    if df_raw is None or df_raw.empty:
+        return pd.DataFrame()
+
+    df = df_raw.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # Corrige eventuais caracteres UTF-8 lidos como latin1 (ex: LOGÃ\x8dSTICA -> LOGÍSTICA)
+    for col_txt in ["Cliente", "Transport."]:
+        if col_txt in df.columns:
+            df[col_txt] = (
+                df[col_txt]
+                .fillna("NÃO INFORMADO")
+                .astype(str)
+                .str.replace("Ã\x8d", "Í", regex=False)
+                .str.replace("Ã\x83", "Ã", regex=False)
+                .str.replace("Ã\x87", "Ç", regex=False)
+                .str.strip()
+                .str.upper()
+            )
+
+    df["Dt_Previsao"] = pd.to_datetime(df.get("Previsão de Entrega"), dayfirst=True, errors="coerce").dt.normalize()
+    df["Dt_Romaneio"] = pd.to_datetime(df.get("Dt. Romaneio"), dayfirst=True, errors="coerce").dt.normalize()
+    df["Dt_Entrega_Real"] = pd.to_datetime(df.get("Dt. Entrega Real"), dayfirst=True, errors="coerce").dt.normalize()
+
+    # Trata datas placeholder 01/01/1900 como sem previsão cadastrada
+    df.loc[df["Dt_Previsao"].dt.year < 2020, "Dt_Previsao"] = pd.NaT
+
+    if "NF" in df.columns:
+        df["NF_Str"] = df["NF"].apply(lambda x: str(int(x)) if pd.notna(x) and str(x).replace(".", "").isdigit() else str(x).strip())
+    else:
+        df["NF_Str"] = "-"
+
+    return df
+
+
 def load_treated_data_cached():
-    """Carrega todas as bases unificadas invalidando o cache automaticamente se algum Excel mudar."""
+    """Carrega todas as bases unificadas invalidando o cache automaticamente se algum arquivo mudar."""
     sig = _get_files_signature()
     df_prod = load_dados_producao(sig)
     df_rom = load_dados_romaneios(sig)
