@@ -169,7 +169,7 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
             col_transp = None
             col_nf = None
 
-            for idx, c in enumerate(df_sheet.columns):
+            for c in df_sheet.columns:
                 c_up = c.upper()
                 if "EMISSÃO" in c_up or "EMISSAO" in c_up or c_up == "DATA":
                     col_data = c
@@ -180,7 +180,7 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
                 elif c_up in ["VLR_NOTA_FISCAL", "NOTA_FISCAL", "VLR NOTA FISCAL"]:
                     col_nf = c
 
-            # Fallback posicional padrão (Col C = VL. FRETE, Col D = TRANSPORTADORA, Col H = EMISSÃO CTE/NFE)
+            # Fallback posicional padrão dentro de A-U
             if col_valor is None and df_sheet.shape[1] > 2:
                 col_valor = df_sheet.columns[2]
             if col_transp is None and df_sheet.shape[1] > 3:
@@ -238,7 +238,6 @@ def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
             df_au = df_raw.iloc[:, :21].copy()
             cols_upper = [str(c).strip().upper() for c in df_au.columns]
 
-            # Localiza o início da tabela dinâmica lateral ("Rótulos de Linha", ex: Col M na aba 08-09, Col R na aba 10)
             idx_rot = next((i for i, c in enumerate(cols_upper) if "RÓTULOS" in c or "ROTULOS" in c), None)
 
             if idx_rot is not None and idx_rot + 2 < df_au.shape[1]:
