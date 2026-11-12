@@ -7,34 +7,81 @@ def _fmt_brl(val: float) -> str:
 
 
 def render_kpis_gerais(df_filtrado: pd.DataFrame):
-    """Renderiza os KPIs superiores de Faturamento e Devoluções."""
     if df_filtrado is None or df_filtrado.empty:
         return
 
-    fat_total = df_filtrado.get("Todas as Unidades (Geral)_Fat", pd.Series([0.0])).sum()
-    dev_total = df_filtrado.get("Todas as Unidades (Geral)_Dev", pd.Series([0.0])).sum()
-    fat_liquido = fat_total - dev_total
-    pct_dev = (dev_total / fat_total * 100) if fat_total > 0 else 0.0
+    fat_total = df_filtrado["Todas as Unidades (Geral)_Fat"].sum() if "Todas as Unidades (Geral)_Fat" in df_filtrado.columns else 0.0
+    dev_total = df_filtrado["Todas as Unidades (Geral)_Dev"].sum() if "Todas as Unidades (Geral)_Dev" in df_filtrado.columns else 0.0
+    fat_liquido = fat_total + dev_total  # Devoluções já vêm negativas na planilha
+
+    dias_com_fat = int((df_filtrado["Todas as Unidades (Geral)_Fat"] > 0).sum()) if "Todas as Unidades (Geral)_Fat" in df_filtrado.columns else len(df_filtrado)
+    media_fat_dia = (fat_total / dias_com_fat) if dias_com_fat > 0 else 0.0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💰 Faturamento Bruto Geral", _fmt_brl(fat_total))
-    c2.metric("📉 Total Devoluções", _fmt_brl(dev_total))
+    c2.metric("↩️ Devoluções Totais", _fmt_brl(dev_total))
     c3.metric("💵 Faturamento Líquido", _fmt_brl(fat_liquido))
-    c4.metric("⚠️ % Índice de Devolução", f"{pct_dev:.2f}%")
+    c4.metric("📊 Média Diária Faturamento", _fmt_brl(media_fat_dia), delta=f"{dias_com_fat} dias úteis", delta_color="off")
 
 
-def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str):
-    """Renderiza os KPIs operacionais da aba de Produção & Expedição."""
+def render_kpis_medias(df_filtrado: pd.DataFrame, unidade_selecionada: str = "Todas as Unidades (Geral)"):
     if df_filtrado is None or df_filtrado.empty:
         return
 
-    total_notas = int(df_filtrado.get("Notas_Realizadas", pd.Series([0])).sum())
-    total_exp = int(df_filtrado.get("Total_Expedidos", pd.Series([0])).sum())
-    total_saudavel = int(df_filtrado.get("Saudavel", pd.Series([0])).sum())
-    total_backlog = int(df_filtrado.get("Backlog", pd.Series([0])).sum())
+    # Considera apenas os dias operacionais com produção ou expedição registrada (a partir de 07/10)
+    mask_op = (
+        (df_filtrado.get("Notas_Realizadas", 0) > 0)
+        | (df_filtrado.get("Saudavel", 0) > 0)
+        | (df_filtrado.get("Backlog", 0) > 0)
+        | (df_filtrado.get("Total_Expedidos", 0) > 0)
+    )
+    df_op = df_filtrado[mask_op].copy()
+    if df_op.empty:
+        df_op = df_filtrado.copy()
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📋 Notas Realizadas (PVs)", f"{total_notas:,}".replace(",", "."))
-    c2.metric("🚚 Volume Expedido", f"{total_exp:,}".replace(",", "."))
-    c3.metric("✅ Notas Saudáveis", f"{total_saudavel:,}".replace(",", "."))
-    c4.metric("⏳ Notas em Backlog", f"{total_backlog:,}".replace(",", "."))
+    dias_op = max(len(df_op), 1)
+    dias_exp = max(int((df_op["Total_Expedidos"] > 0).sum()), 1) if "Total_Expedidos" in df_op.columns else dias_op
+
+    total_notas = df_op["Notas_Realizadas"].sum() if "Notas_Realizadas" in df_op.columns else 0.0
+    total_saudavel = df_op["Saudavel"].sum() if "Saudavel" in df_op.columns else 0.0
+    total_backlog = df_op["Backlog"].sum() if "Backlog" in df_op.columns else 0.0
+    total_skus = df_op["Total_SKUs"].sum() if "Total_SKUs" in df_op.columns else 0.0
+    total_expedidos = df_op["Total_Expedidos"].sum() if "Total_Expedidos" in df_op.columns else 0.0
+
+    media_notas = total_notas / dias_op
+    media_saudavel = total_saudavel / dias_op
+    media_backlog = total_backlog / dias_op
+    media_skus = total_skus / dias_op
+    media_expedicao = total_expedidos / dias_exp
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric(
+        "📦 Média Notas Realizadas / Dia",
+        f"{media_notas:,.1f}".replace(",", "."),
+        delta=f"Total: {int(total_notas):,}".replace(",", "."),
+        delta_color="off",
+    )
+    c2.metric(
+        "🟢 Média Notas Saudáveis / Dia",
+        f"{media_saudavel:,.1f}".replace(",", "."),
+        delta=f"Total: {int(total_saudavel):,}".replace(",", "."),
+        delta_color="normal",
+    )
+    c3.metric(
+        "🔴 Média Backlog / Dia",
+        f"{media_backlog:,.1f}".replace(",", "."),
+        delta=f"Total: {int(total_backlog):,}".replace(",", "."),
+        delta_color="inverse",
+    )
+    c4.metric(
+        "🚚 Média Expedição / Dia",
+        f"{media_expedicao:,.1f}".replace(",", "."),
+        delta=f"Total: {int(total_expedidos):,} ({dias_exp} dias)".replace(",", "."),
+        delta_color="off",
+    )
+    c5.metric(
+        "🏷️ Média SKUs Separados / Dia",
+        f"{media_skus:,.1f}".replace(",", "."),
+        delta=f"Total: {int(total_skus):,}".replace(",", "."),
+        delta_color="off",
+    )

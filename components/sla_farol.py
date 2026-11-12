@@ -13,8 +13,8 @@ def _classificar_farol(pct_sla: float, total_concluidas: int) -> str:
     return "🔴 Crítico (<70%)"
 
 
-def render_secao_sla(df_sla: pd.DataFrame, df_pedidos_brutos: pd.DataFrame):
-    st.markdown("### 🚦 Farol SLA de Entregas & Acompanhamento Operacional")
+def render_secao_sla(df_sla: pd.DataFrame):
+    st.markdown("### 🚦 Farol SLA de Entregas & Pendências de Retorno")
 
     if df_sla is None or df_sla.empty:
         st.info("📂 **Aguardando base SLA:** Insira o arquivo `SLA.xls` na pasta `./data/` para visualizar os indicadores.")
@@ -32,28 +32,67 @@ def render_secao_sla(df_sla: pd.DataFrame, df_pedidos_brutos: pd.DataFrame):
         st.warning("Nenhuma nota com 'Dt. Romaneio' preenchida encontrada na planilha SLA.")
         return
 
-    # Filtros da aba SLA
-    col_f1, col_f2, col_f3 = st.columns([1.6, 1.4, 1.4])
+    # =========================================================================
+    # FILTRO TEMPORAL (IGUAL AO DE FATURAMENTO, PRODUÇÃO E FRETE)
+    # =========================================================================
+    col_ft1, col_ft2 = st.columns([1.5, 3])
+
+    with col_ft1:
+        tipo_filtro_sla = st.radio(
+            "Filtrar período do SLA por:",
+            ["Intervalo de Calendário", "Por Mês", "Por Semana do Ano"],
+            horizontal=True,
+            key="filtro_sla_radio",
+        )
 
     min_dt = df_rom["Dt_Romaneio"].min().date()
     max_dt = df_rom["Dt_Romaneio"].max().date()
 
-    with col_f1:
-        periodo_sla = st.date_input(
-            "📅 Período (Dt. Romaneio):",
-            value=(min_dt, max_dt),
-            min_value=min_dt,
-            max_value=max_dt,
-            key="sla_periodo_romaneio",
-        )
-        dt_ini_s, dt_fim_s = (
-            periodo_sla if isinstance(periodo_sla, tuple) and len(periodo_sla) == 2 else (min_dt, max_dt)
-        )
+    with col_ft2:
+        if tipo_filtro_sla == "Intervalo de Calendário":
+            periodo_sla = st.date_input(
+                "Selecione o Período (Dt. Romaneio):",
+                value=(min_dt, max_dt),
+                min_value=min_dt,
+                max_value=max_dt,
+                key="sla_periodo_romaneio",
+            )
+            dt_ini_s, dt_fim_s = (
+                periodo_sla if isinstance(periodo_sla, tuple) and len(periodo_sla) == 2 else (min_dt, max_dt)
+            )
+
+        elif tipo_filtro_sla == "Por Mês":
+            df_rom["Mes_Ano"] = df_rom["Dt_Romaneio"].dt.strftime("%Y-%m")
+            meses_s = sorted(df_rom["Mes_Ano"].unique().tolist())
+            mes_sel_s = st.selectbox("Selecione o Mês:", meses_s, index=len(meses_s) - 1, key="sla_filtro_mes")
+            dt_ini_s = df_rom[df_rom["Mes_Ano"] == mes_sel_s]["Dt_Romaneio"].min().date()
+            dt_fim_s = df_rom[df_rom["Mes_Ano"] == mes_sel_s]["Dt_Romaneio"].max().date()
+
+        else:
+            df_rom["Semana_Inicio"] = df_rom["Dt_Romaneio"].apply(lambda d: d - pd.Timedelta(days=d.weekday()))
+            df_rom["Semana_Fim"] = df_rom["Semana_Inicio"] + pd.Timedelta(days=6)
+            df_rom["Semana_Label"] = (
+                "Semana do dia "
+                + df_rom["Semana_Inicio"].dt.strftime("%d/%m")
+                + " - "
+                + df_rom["Semana_Fim"].dt.strftime("%d/%m")
+            )
+            df_sem_ord = df_rom.sort_values("Semana_Inicio")
+            semanas_s = df_sem_ord["Semana_Label"].unique().tolist()
+            semana_sel_s = st.selectbox(
+                "Selecione a Semana:",
+                semanas_s,
+                index=len(semanas_s) - 1,
+                key="sla_filtro_semana",
+            )
+            dt_ini_s = df_rom[df_rom["Semana_Label"] == semana_sel_s]["Dt_Romaneio"].min().date()
+            dt_fim_s = df_rom[df_rom["Semana_Label"] == semana_sel_s]["Dt_Romaneio"].max().date()
 
     df_filtrado = df_rom[
         (df_rom["Dt_Romaneio"].dt.date >= dt_ini_s) & (df_rom["Dt_Romaneio"].dt.date <= dt_fim_s)
     ].copy()
 
+    col_f2, col_f3 = st.columns(2)
     with col_f2:
         lista_transp = ["Todas as Transportadoras"] + sorted(df_filtrado["Transport."].dropna().unique().tolist())
         transp_sel = st.selectbox("🚚 Filtrar Transportadora:", lista_transp, index=0, key="sla_transp_sel")
@@ -72,7 +111,6 @@ def render_secao_sla(df_sla: pd.DataFrame, df_pedidos_brutos: pd.DataFrame):
     df_filtrado["Tem_Entrega"] = df_filtrado["Dt_Entrega_Real"].notna()
     df_filtrado["Tem_Previsao"] = df_filtrado["Dt_Previsao"].notna()
 
-    # Considera no prazo quando Dt_Entrega_Real <= Dt_Previsao (ou quando Dt_Previsao não foi preenchida no ERP)
     df_filtrado["No_Prazo"] = df_filtrado["Tem_Entrega"] & (
         (~df_filtrado["Tem_Previsao"]) | (df_filtrado["Dt_Entrega_Real"] <= df_filtrado["Dt_Previsao"])
     )
@@ -130,7 +168,6 @@ def render_secao_sla(df_sla: pd.DataFrame, df_pedidos_brutos: pd.DataFrame):
                 Pendencia=("Pendencia_Retorno", "sum"),
             )
             .sort_values("Dt_Romaneio")
-            .tail(30)
             .reset_index(drop=True)
         )
         df_dia["Data_Str"] = df_dia["Dt_Romaneio"].dt.strftime("%d/%m")
@@ -203,7 +240,10 @@ def render_secao_sla(df_sla: pd.DataFrame, df_pedidos_brutos: pd.DataFrame):
                     ],
                     line=dict(color="#000000", width=0.8),
                 ),
-                text=[f"<b>{p:.1f}%</b> ({int(np)}/{int(ent)})" for p, np, ent in zip(df_tr_sla["Pct_SLA"], df_tr_sla["No_Prazo"], df_tr_sla["Entregues"])],
+                text=[
+                    f"<b>{p:.1f}%</b> ({int(np)}/{int(ent)})"
+                    for p, np, ent in zip(df_tr_sla["Pct_SLA"], df_tr_sla["No_Prazo"], df_tr_sla["Entregues"])
+                ],
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>%{y}</b><br>% SLA: %{x:.2f}%<extra></extra>",
@@ -290,68 +330,10 @@ def render_secao_sla(df_sla: pd.DataFrame, df_pedidos_brutos: pd.DataFrame):
         }
     )
 
-    st.dataframe(tabela_farol_exibicao, use_container_width=True, height=400)
+    st.dataframe(tabela_farol_exibicao, use_container_width=True, height=420)
 
     # =========================================================================
-    # 4. ACOMPANHAMENTO DE PRODUÇÃO DO DIA: REGULAR VS. EMERGENCIAL
-    # =========================================================================
-    st.markdown("---")
-    st.markdown("### ⚡ Acompanhamento de Pedidos em Produção & Monitoramento de Urgências")
-
-    if df_pedidos_brutos is not None and not df_pedidos_brutos.empty:
-        datas_disp = sorted(df_pedidos_brutos["DATA"].dropna().unique(), reverse=True)
-        data_ref_prod = st.selectbox(
-            "📅 Selecione a Data de Produção para Acompanhamento dos Pedidos:",
-            datas_disp,
-            index=0,
-            format_func=lambda d: pd.to_datetime(d).strftime("%d/%m/%Y"),
-            key="sla_data_prod_dia",
-        )
-
-        df_dia_prod = df_pedidos_brutos[df_pedidos_brutos["DATA"] == data_ref_prod].copy()
-
-        # Classifica fluxo Regular vs. Emergencial / Prioritário (pedidos críticos em backlog/falta ou prioridade)
-        def _classificar_fluxo(row):
-            st_prod = str(row.get("STATUS PRODUÇÃO", "")).upper()
-            st_geral = str(row.get("STATUS", "")).upper()
-            if "FALTANDO" in st_prod or "BACKLOG" in st_geral or "EMERG" in st_geral or "URG" in st_geral:
-                return "🚨 Emergencial / Prioritário"
-            return "✅ Fluxo Regular"
-
-        df_dia_prod["Tipo_Fluxo"] = df_dia_prod.apply(_classificar_fluxo, axis=1)
-
-        tot_ped_dia = len(df_dia_prod)
-        qtd_regular = int((df_dia_prod["Tipo_Fluxo"] == "✅ Fluxo Regular").sum())
-        qtd_emerg = int((df_dia_prod["Tipo_Fluxo"] == "🚨 Emergencial / Prioritário").sum())
-        pct_emerg = (qtd_emerg / tot_ped_dia * 100) if tot_ped_dia > 0 else 0.0
-
-        p1, p2, p3, p4 = st.columns(4)
-        p1.metric("📋 Pedidos em Operação no Dia", f"{tot_ped_dia:,}".replace(",", "."))
-        p2.metric("✅ Fluxo Regular", f"{qtd_regular:,}".replace(",", "."))
-        p3.metric("🚨 Emergencial / Prioritário", f"{qtd_emerg:,}".replace(",", "."))
-        p4.metric("⚠️ % Urgência na Operação", f"{pct_emerg:.1f}%")
-
-        cols_prod_show = [c for c in ["Tipo_Fluxo", "PV", "SEPARADOR", "SKU'S", "TR ou NC", "STATUS PRODUÇÃO", "STATUS"] if c in df_dia_prod.columns]
-        st.dataframe(
-            df_dia_prod[cols_prod_show].rename(
-                columns={
-                    "Tipo_Fluxo": "Classificação Fluxo",
-                    "PV": "Nº Pedido (PV)",
-                    "SEPARADOR": "Separador",
-                    "SKU'S": "Qtd. SKUs",
-                    "TR ou NC": "Transportadora / Modal",
-                    "STATUS PRODUÇÃO": "Etapa Produção",
-                    "STATUS": "Status Carteira",
-                }
-            ),
-            use_container_width=True,
-            height=360,
-        )
-    else:
-        st.info("Base `DadosBrutos` de `DadosProducao.xlsx` não encontrada para detalhamento dos pedidos do dia.")
-
-    # =========================================================================
-    # 5. DETALHAMENTO DAS NOTAS COM PENDÊNCIA DE RETORNO
+    # 4. DETALHAMENTO DAS NOTAS COM PENDÊNCIA DE RETORNO
     # =========================================================================
     with st.expander("⏳ Ver Detalhamento das Notas com Pendência de Retorno (Sem Dt. Entrega Real)"):
         df_pend_view = df_filtrado[df_filtrado["Pendencia_Retorno"]].copy()

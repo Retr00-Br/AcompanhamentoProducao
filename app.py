@@ -5,7 +5,6 @@ import streamlit as st
 from utils.loader import (
     load_treated_data_cached,
     load_dados_sla,
-    load_pedidos_producao_brutos,
 )
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
@@ -82,7 +81,7 @@ def build_processed_dataset(_sig: str = ""):
         df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer")
 
-    # 4. Frete Terceirizado (Todas as abas consolidadas: 08-09, 10, etc.)
+    # 4. Frete Terceirizado
     if df_frete_tratado is not None and not df_frete_tratado.empty:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")["Valor Total Frete"]
@@ -114,7 +113,6 @@ def main():
     sig = get_local_files_signature()
     df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset(sig)
     df_sla = load_dados_sla(sig)
-    df_pedidos_brutos = load_pedidos_producao_brutos(sig)
 
     if df_diario is None or df_diario.empty:
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
@@ -222,7 +220,7 @@ def main():
         render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
 
     with tab_sla:
-        render_secao_sla(df_sla, df_pedidos_brutos)
+        render_secao_sla(df_sla)
 
     with tab_tabela:
         render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)

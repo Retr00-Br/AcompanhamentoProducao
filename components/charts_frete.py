@@ -20,7 +20,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     df_f["DATA"] = pd.to_datetime(df_f["DATA"]).dt.normalize()
 
     # =========================================================================
-    # 1. COMPARATIVO MENSAL FRETE VS FATURAMENTO MONETÁRIO (INALTERADO)
+    # 1. COMPARATIVO MENSAL: FATURAMENTO DO MÊS X VALOR GASTO TOTAL DO FRETE
     # =========================================================================
     st.markdown("### 📊 Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
 
@@ -110,19 +110,25 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_comp, use_container_width=True)
 
     # =========================================================================
-    # 2. FILTRO TEMPORAL COMPLETO + GRÁFICO DIÁRIO LADO A LADO
+    # 2. FILTRO TEMPORAL COMPLETO + GRÁFICO DIÁRIO (UNIFICADO COM FATURAMENTO TOTAL DO PERÍODO)
     # =========================================================================
     st.markdown("---")
     st.markdown("### 📈 Relação Diária: % do Custo de Frete sobre o Faturamento")
 
     frete_diario_agg = df_f.groupby("DATA")["Valor Total Frete"].sum().reset_index()
 
+    # Usa how="outer" para preservar TODOS os dias faturados do mês/período,
+    # garantindo 100% de consistência com o % Frete / Fat do Comparativo Mensal!
     df_diario_frete_base = pd.merge(
-        frete_diario_agg,
         df_d[["DATA", col_fat_geral]],
+        frete_diario_agg,
         on="DATA",
-        how="left",
-    ).fillna({col_fat_geral: 0.0}).sort_values("DATA").reset_index(drop=True)
+        how="outer",
+    ).fillna({col_fat_geral: 0.0, "Valor Total Frete": 0.0}).sort_values("DATA").reset_index(drop=True)
+
+    # Limita até a última data em que existe operação de frete lançada na planilha
+    max_data_frete_real = df_f["DATA"].max()
+    df_diario_frete_base = df_diario_frete_base[df_diario_frete_base["DATA"] <= max_data_frete_real].reset_index(drop=True)
 
     if df_diario_frete_base.empty:
         st.info("Sem lançamentos de frete registrados.")
@@ -158,8 +164,10 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
             df_diario_frete_base["Mes_Ano"] = df_diario_frete_base["DATA"].dt.strftime("%Y-%m")
             meses_f = sorted(df_diario_frete_base["Mes_Ano"].unique().tolist())
             mes_sel_f = st.selectbox("Selecione o Mês:", meses_f, index=len(meses_f) - 1, key="filtro_frete_mes")
-            dt_inicio_f = df_diario_frete_base[df_diario_frete_base["Mes_Ano"] == mes_sel_f]["DATA"].min().date()
-            dt_fim_f = df_diario_frete_base[df_diario_frete_base["Mes_Ano"] == mes_sel_f]["DATA"].max().date()
+            # Considera o mês calendário completo (dia 1 ao último dia do mês) para bater exatamente com o Comparativo Mensal
+            ano_m, mes_m = map(int, mes_sel_f.split("-"))
+            dt_inicio_f = pd.Timestamp(year=ano_m, month=mes_m, day=1).date()
+            dt_fim_f = (pd.Timestamp(year=ano_m, month=mes_m, day=1) + pd.offsets.MonthEnd(1)).date()
 
         else:
             df_diario_frete_base["Semana_Inicio"] = df_diario_frete_base["DATA"].apply(lambda d: d - pd.Timedelta(days=d.weekday()))
@@ -182,23 +190,36 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
                 key="filtro_frete_semana",
             )
 
-            dt_inicio_f = df_diario_frete_base[df_diario_frete_base["Semana_Label"] == semana_sel_f]["DATA"].min().date()
-            dt_fim_f = df_diario_frete_base[df_diario_frete_base["Semana_Label"] == semana_sel_f]["DATA"].max().date()
+            dt_inicio_f = df_diario_frete_base[df_diario_frete_base["Semana_Label"] == semana_sel_f]["Semana_Inicio"].min().date()
+            dt_fim_f = df_diario_frete_base[df_diario_frete_base["Semana_Label"] == semana_sel_f]["Semana_Fim"].max().date()
 
-    df_diario_frete = df_diario_frete_base[
-        (df_diario_frete_base["DATA"].dt.date >= dt_inicio_f) & (df_diario_frete_base["DATA"].dt.date <= dt_fim_f)
+    # Usa a base completa (sem corte de max_data_frete_real no final do mês) para que o faturamento mensal bata 100%
+    df_full_merge = pd.merge(
+        df_d[["DATA", col_fat_geral]],
+        frete_diario_agg,
+        on="DATA",
+        how="outer",
+    ).fillna({col_fat_geral: 0.0, "Valor Total Frete": 0.0}).sort_values("DATA").reset_index(drop=True)
+
+    df_periodo_completo = df_full_merge[
+        (df_full_merge["DATA"].dt.date >= dt_inicio_f) & (df_full_merge["DATA"].dt.date <= dt_fim_f)
     ].copy().reset_index(drop=True)
 
-    total_frete_sel = df_diario_frete["Valor Total Frete"].sum()
-    total_fat_sel = df_diario_frete[col_fat_geral].sum()
+    total_frete_sel = df_periodo_completo["Valor Total Frete"].sum()
+    total_fat_sel = df_periodo_completo[col_fat_geral].sum()
     pct_frete_sel = (total_frete_sel / total_fat_sel * 100) if total_fat_sel > 0 else 0.0
-    dias_frete_sel = df_diario_frete["DATA"].nunique()
+    dias_frete_sel = int((df_periodo_completo["Valor Total Frete"] > 0).sum())
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💵 Total Frete Acumulado", f"R$ {total_frete_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    c2.metric("📦 Faturamento Atendido", f"R$ {total_fat_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c2.metric("📦 Faturamento Total Período", f"R$ {total_fat_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     c3.metric("🎯 % Frete / Faturamento", f"{pct_frete_sel:.2f}%")
     c4.metric("📅 Dias c/ Operação Frete", f"{dias_frete_sel} dias")
+
+    # No gráfico diário, exibe os dias que tiveram faturamento ou frete no período
+    df_diario_frete = df_periodo_completo[
+        (df_periodo_completo["Valor Total Frete"] > 0) | (df_periodo_completo[col_fat_geral] > 0)
+    ].copy().reset_index(drop=True)
 
     if df_diario_frete.empty:
         st.info("Sem lançamentos no período selecionado.")
@@ -364,8 +385,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         st.dataframe(df_tabela_final, use_container_width=True)
 
         # =====================================================================
-        # 4. NOVO KPI & GRÁFICO: VALOR TOTAL NFs X FRETE X % POR TRANSPORTADORA
-        # (Exatamente igual ao modelo do gráfico "Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
+        # 4. KPI & GRÁFICO: VALOR TOTAL NFs X FRETE X % POR TRANSPORTADORA
         # =====================================================================
         st.markdown("---")
         st.markdown("### 📊 Comparativo por Transportadora: Valor Total das NFs vs. Custo de Frete (% Frete / NF)")
