@@ -11,28 +11,27 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         st.info("Sem dados de frete terceirizado disponíveis.")
         return
 
+    col_fat_geral = "Todas as Unidades (Geral)_Fat" if "Todas as Unidades (Geral)_Fat" in df_diario.columns else col_fat_ativa
+
+    df_d = df_diario.copy()
+    df_d["DATA"] = pd.to_datetime(df_d["DATA"]).dt.normalize()
+
     df_f = df_frete_tratado.copy()
     df_f["DATA"] = pd.to_datetime(df_f["DATA"]).dt.normalize()
 
-    # Usa o Valor das Notas Fiscais atendidas na planilha de frete (ex: R$ 1.672.257,65 no mês 10 -> 5,40%)
-    if "Valor_NF" not in df_f.columns or df_f["Valor_NF"].sum() == 0:
-        col_fat_geral = "Todas as Unidades (Geral)_Fat" if "Todas as Unidades (Geral)_Fat" in df_diario.columns else col_fat_ativa
-        df_d = df_diario.copy()
-        df_d["DATA"] = pd.to_datetime(df_d["DATA"]).dt.normalize()
-        df_f = pd.merge(df_f, df_d[["DATA", col_fat_geral]].rename(columns={col_fat_geral: "Valor_NF"}), on="DATA", how="left").fillna({"Valor_NF": 0.0})
+    # =========================================================================
+    # 1. COMPARATIVO MENSAL: FATURAMENTO DO MÊS X VALOR GASTO TOTAL DO FRETE
+    # =========================================================================
+    st.markdown("### 📊 Comparativo Mensal: Custo de Frete vs. Faturamento Monetário")
 
-    # =========================================================================
-    # 1. COMPARATIVO MENSAL FRETE VS VALOR NOTAS ATENDIDAS (TODAS AS ABAS)
-    # =========================================================================
-    st.markdown("### 📊 Comparativo Mensal: Custo de Frete vs. Faturamento Atendido (NFs)")
+    df_d["Mes_Ano"] = df_d["DATA"].dt.strftime("%Y-%m")
+    fat_mensal = df_d.groupby("Mes_Ano")[col_fat_geral].sum().reset_index(name="Faturamento")
 
     df_f["Mes_Ano"] = df_f["DATA"].dt.strftime("%Y-%m")
-    df_comp_mensal = (
-        df_f.groupby("Mes_Ano", as_index=False)
-        .agg(Faturamento=("Valor_NF", "sum"), Frete=("Valor Total Frete", "sum"))
-        .sort_values("Mes_Ano")
-        .reset_index(drop=True)
-    )
+    frete_mensal = df_f.groupby("Mes_Ano")["Valor Total Frete"].sum().reset_index(name="Frete")
+
+    df_comp_mensal = pd.merge(fat_mensal, frete_mensal, on="Mes_Ano", how="outer").fillna(0.0)
+    df_comp_mensal = df_comp_mensal.sort_values("Mes_Ano").reset_index(drop=True)
 
     df_comp_mensal["Pct_Frete"] = (df_comp_mensal["Frete"] / df_comp_mensal["Faturamento"].replace(0, pd.NA)) * 100
     df_comp_mensal["Pct_Frete"] = df_comp_mensal["Pct_Frete"].fillna(0.0)
@@ -50,13 +49,13 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         go.Bar(
             x=eixo_x_mes,
             y=y_fat,
-            name="Faturamento Atendido - NFs (R$)",
+            name="Faturamento Total (R$)",
             marker=dict(color="#1f77b4", line=dict(color="#000000", width=1.0)),
             text=[f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") for v in y_fat],
             textposition="outside",
             textfont=dict(size=11, color="#000000"),
             cliponaxis=False,
-            hovertemplate="<b>Mês: %{x}</b><br>Valor NFs: R$ %{y:,.2f}<extra></extra>",
+            hovertemplate="<b>Mês: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
 
@@ -80,7 +79,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         fig_comp.add_annotation(
             x=mes,
             y=y_topo_absoluto,
-            text=f"<b>% Frete / NF: {p_val:.2f}%</b>",
+            text=f"<b>% Frete / Fat: {p_val:.2f}%</b>",
             showarrow=False,
             font=dict(size=12, color="#d62728", family="Arial Black"),
             bgcolor="#f8d7da",
@@ -114,17 +113,16 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     # 2. FILTRO TEMPORAL COMPLETO + GRÁFICO DIÁRIO LADO A LADO
     # =========================================================================
     st.markdown("---")
-    st.markdown("### 📈 Relação Diária: % do Custo de Frete sobre o Valor das Notas Atendidas")
+    st.markdown("### 📈 Relação Diária: % do Custo de Frete sobre o Faturamento")
 
-    df_diario_frete_base = (
-        df_f.groupby("DATA", as_index=False)
-        .agg(
-            Valor_NF=("Valor_NF", "sum"),
-            **{"Valor Total Frete": ("Valor Total Frete", "sum")},
-        )
-        .sort_values("DATA")
-        .reset_index(drop=True)
-    )
+    frete_diario_agg = df_f.groupby("DATA")["Valor Total Frete"].sum().reset_index()
+
+    df_diario_frete_base = pd.merge(
+        frete_diario_agg,
+        df_d[["DATA", col_fat_geral]],
+        on="DATA",
+        how="left",
+    ).fillna({col_fat_geral: 0.0}).sort_values("DATA").reset_index(drop=True)
 
     if df_diario_frete_base.empty:
         st.info("Sem lançamentos de frete registrados.")
@@ -192,13 +190,13 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     ].copy().reset_index(drop=True)
 
     total_frete_sel = df_diario_frete["Valor Total Frete"].sum()
-    total_fat_sel = df_diario_frete["Valor_NF"].sum()
+    total_fat_sel = df_diario_frete[col_fat_geral].sum()
     pct_frete_sel = (total_frete_sel / total_fat_sel * 100) if total_fat_sel > 0 else 0.0
     dias_frete_sel = df_diario_frete["DATA"].nunique()
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💵 Total Frete Acumulado", f"R$ {total_frete_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    c2.metric("📦 Faturamento Atendido (NFs)", f"R$ {total_fat_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c2.metric("📦 Faturamento Atendido", f"R$ {total_fat_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     c3.metric("🎯 % Frete / Faturamento", f"{pct_frete_sel:.2f}%")
     c4.metric("📅 Dias c/ Operação Frete", f"{dias_frete_sel} dias")
 
@@ -208,7 +206,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     df_diario_frete["Data_Str"] = df_diario_frete["DATA"].dt.strftime("%d/%m")
     df_diario_frete["Pct_Frete_Dia"] = (
-        df_diario_frete["Valor Total Frete"] / df_diario_frete["Valor_NF"].replace(0, pd.NA) * 100
+        df_diario_frete["Valor Total Frete"] / df_diario_frete[col_fat_geral].replace(0, pd.NA) * 100
     ).fillna(0.0)
 
     def fmt_val_exato(v):
@@ -216,7 +214,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
             return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return ""
 
-    labels_fat = [fmt_val_exato(v) for v in df_diario_frete["Valor_NF"]]
+    labels_fat = [fmt_val_exato(v) for v in df_diario_frete[col_fat_geral]]
     labels_pct = [f"{v:.2f}%" if v > 0 else "" for v in df_diario_frete["Pct_Frete_Dia"]]
 
     fig_diario = go.Figure()
@@ -224,8 +222,8 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     fig_diario.add_trace(
         go.Bar(
             x=df_diario_frete["Data_Str"],
-            y=df_diario_frete["Valor_NF"],
-            name="Faturamento Atendido - NFs (R$)",
+            y=df_diario_frete[col_fat_geral],
+            name="Faturamento (R$)",
             marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
             text=labels_fat,
             textposition="outside",
@@ -233,7 +231,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
             cliponaxis=False,
             offsetgroup=1,
             yaxis="y1",
-            hovertemplate="<b>Data: %{x}</b><br>Valor NFs: R$ %{y:,.2f}<extra></extra>",
+            hovertemplate="<b>Data: %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
         )
     )
 
@@ -241,7 +239,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         go.Bar(
             x=df_diario_frete["Data_Str"],
             y=df_diario_frete["Pct_Frete_Dia"],
-            name="% Frete / NF",
+            name="% Frete / Faturamento",
             marker=dict(color="#d97706", line=dict(color="#000000", width=0.8)),
             text=labels_pct,
             textposition="outside",
@@ -253,7 +251,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    max_fat = df_diario_frete["Valor_NF"].max()
+    max_fat = df_diario_frete[col_fat_geral].max()
     max_pct = df_diario_frete["Pct_Frete_Dia"].max()
 
     fig_diario.update_layout(
@@ -267,13 +265,13 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         bargap=0.15,
         bargroupgap=0.03,
         yaxis=dict(
-            title=dict(text="<b>Faturamento Atendido - NFs (R$)</b>", font=dict(color="#000000", size=13)),
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(color="#000000", size=13)),
             showgrid=True,
             gridcolor="#e9ecef",
             range=[0, max(max_fat * 1.35, 100.0)],
         ),
         yaxis2=dict(
-            title=dict(text="<b>% Frete / NF</b>", font=dict(color="#d97706", size=13)),
+            title=dict(text="<b>% Frete / Faturamento</b>", font=dict(color="#d97706", size=13)),
             overlaying="y",
             side="right",
             showgrid=False,
@@ -287,7 +285,7 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_diario, use_container_width=True)
 
     # =========================================================================
-    # 3. PIZZAS E TABELA TERCEIROS (CONSOLIDADO A-U DE TODAS AS ABAS)
+    # 3. PIZZAS E TABELA TERCEIROS (CONSOLIDADO COLUNAS A-U DE TODAS AS ABAS)
     # =========================================================================
     df_mnop_clean = load_resumo_terceiros_MNOP()
 
