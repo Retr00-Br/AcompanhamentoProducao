@@ -1,50 +1,42 @@
 import pandas as pd
 
 
-def fmt_brl(val: float) -> str:
-    """Retorna o valor monetário formatado em Real (R$) limpo."""
-    try:
-        if pd.isna(val) or val is None:
-            return "R$ 0,00"
-        val = float(val)
-        return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except Exception:
-        return "R$ 0,00"
-
-
-def parse_faturamento_filiais(df_raw: pd.DataFrame) -> pd.DataFrame:
-    """Extrai os dados da aba FaturamentoBruto mapeando as colunas e garantindo devoluções em módulo positivo."""
-    if df_raw is None or df_raw.empty:
+def parse_faturamento_filiais(df_fat_bruto: pd.DataFrame) -> pd.DataFrame:
+    """Processa a aba FaturamentoBruto separando Faturamento e Devolução de cada unidade."""
+    if df_fat_bruto is None or df_fat_bruto.empty:
         return pd.DataFrame()
 
-    try:
-        df = df_raw.iloc[2:].copy()
+    df = df_fat_bruto.copy()
+    df = df.dropna(subset=["Data"]).reset_index(drop=True)
+    df["DATA"] = pd.to_datetime(df["Data"], errors="coerce").astype("datetime64[ns]")
+    df = df.dropna(subset=["DATA"]).reset_index(drop=True)
 
-        mapping_cols = {
-            0: "DATA",
-            1: "0101 - Matriz_Fat",
-            2: "0101 - Matriz_Dev",
-            3: "0102 - Filial RJ_Fat",
-            4: "0102 - Filial RJ_Dev",
-            5: "0103 - Filial CP_Fat",
-            6: "0103 - Filial CP_Dev",
-            7: "0104 - Filial SBC_Fat",
-            8: "0104 - Filial SBC_Dev",
-            9: "Todas as Unidades (Geral)_Fat",
-            10: "Todas as Unidades (Geral)_Dev",
-        }
+    mapeamento = {
+        "0101 - Matriz": ("0101 - Matriz", "Unnamed: 2"),
+        "0102 - Filial RJ": ("0102 - Filial RJ", "Unnamed: 4"),
+        "0103 - Filial CP": ("0103 - Filial CP", "Unnamed: 6"),
+        "0104 - Filial SBC": ("0104 - Filial SBC", "Unnamed: 8"),
+    }
 
-        df = df.rename(columns=mapping_cols)
-        df["DATA"] = pd.to_datetime(df["DATA"], errors="coerce")
+    df_out = pd.DataFrame({"DATA": df["DATA"]})
 
-        for col in df.columns:
-            if col != "DATA":
-                # Se for coluna de devolução, converte para valor positivo absoluto (abs)
-                if "_Dev" in col:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").abs().fillna(0.0)
-                else:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    for unidade, (col_f, col_d) in mapeamento.items():
+        val_f = pd.to_numeric(df[col_f], errors="coerce").fillna(0.0) if col_f in df.columns else 0.0
+        val_d = pd.to_numeric(df[col_d], errors="coerce").fillna(0.0).abs() if col_d in df.columns else 0.0
+        df_out[f"{unidade}_Fat"] = val_f
+        df_out[f"{unidade}_Dev"] = val_d
 
-        return df.dropna(subset=["DATA"]).reset_index(drop=True)
-    except Exception:
-        return pd.DataFrame()
+    df_out["Todas as Unidades (Geral)_Fat"] = (
+        df_out["0101 - Matriz_Fat"]
+        + df_out["0102 - Filial RJ_Fat"]
+        + df_out["0103 - Filial CP_Fat"]
+        + df_out["0104 - Filial SBC_Fat"]
+    )
+    df_out["Todas as Unidades (Geral)_Dev"] = (
+        df_out["0101 - Matriz_Dev"]
+        + df_out["0102 - Filial RJ_Dev"]
+        + df_out["0103 - Filial CP_Dev"]
+        + df_out["0104 - Filial SBC_Dev"]
+    )
+
+    return df_out.groupby("DATA", as_index=False).sum().sort_values("DATA").reset_index(drop=True)

@@ -21,7 +21,6 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     df_cli["Mes_Str"] = df_cli[col_mes].dt.strftime("%Y-%m")
     df_cli[col_val] = pd.to_numeric(df_cli[col_val], errors="coerce").fillna(0.0)
 
-    # Divisor Mensal vs Acumulado Geral
     meses_disponiveis = sorted([m for m in df_cli["Mes_Str"].dropna().unique()])
     opcoes_visao = ["Acumulado Geral"] + meses_disponiveis
 
@@ -41,7 +40,6 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         df_top = df_cli[df_cli["Mes_Str"] == visao_selecionada].groupby(col_cli)[col_val].sum().reset_index()
         titulo_grafico = f"Top 10 Clientes - Mês {visao_selecionada}"
 
-    # 🔝 ORDENAÇÃO: Maior para o Menor (Decrescente)
     df_top = df_top.sort_values(by=col_val, ascending=False).head(10).reset_index(drop=True)
 
     if df_top.empty:
@@ -79,14 +77,13 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
             gridcolor="#e9ecef",
             range=[0, max_val * 1.30],
         ),
-        yaxis=dict(autorange="reversed", tickfont=dict(size=11, color="#000000")),  # Força ordenação do maior no topo
+        yaxis=dict(autorange="reversed", tickfont=dict(size=11, color="#000000")),
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
 
 def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col_dev_ativa: str):
-    st.markdown("---")
     st.markdown("### 📜 Tabela Consolidada Operacional Diária")
 
     if df_filtrado is None or df_filtrado.empty:

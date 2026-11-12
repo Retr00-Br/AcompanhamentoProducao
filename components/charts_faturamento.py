@@ -26,7 +26,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
     y_fat = df_chart[col_fat].fillna(0.0).tolist()
     y_dev = df_chart[col_dev].fillna(0.0).tolist()
 
-    # Formatação estrita sem qualquer abreviação (Ex: R$ 844.867,30)
     def fmt_val_exato(v):
         if v > 0:
             return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -39,7 +38,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
 
     fig = go.Figure()
 
-    # 1. Coluna de Faturamento (Azul) - Exibe valor numérico completo no topo
     fig.add_trace(
         go.Bar(
             x=eixo_x,
@@ -54,7 +52,6 @@ def render_secao_faturamento(df_filtrado: pd.DataFrame, unidade_selecionada: str
         )
     )
 
-    # 2. Coluna de Devoluções (Vermelha) - Exibe valor numérico completo no topo
     fig.add_trace(
         go.Bar(
             x=eixo_x,

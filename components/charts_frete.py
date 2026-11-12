@@ -5,7 +5,6 @@ from utils.loader import load_resumo_terceiros_MNOP
 
 
 def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tratado: pd.DataFrame):
-    st.markdown("---")
     st.markdown("### 🚚 Gestão & Performance de Frete Terceirizado")
 
     if df_frete_tratado is None or df_frete_tratado.empty:
@@ -123,7 +122,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         st.info("Sem lançamentos de frete registrados.")
         return
 
-    # Filtro Temporal Triplo
     col_f1, col_f2 = st.columns([1.5, 3])
 
     with col_f1:
@@ -185,7 +183,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         (df_diario_frete_base["DATA"].dt.date >= dt_inicio_f) & (df_diario_frete_base["DATA"].dt.date <= dt_fim_f)
     ].copy().reset_index(drop=True)
 
-    # KPIs Dinâmicos
     total_frete_sel = df_diario_frete["Valor Total Frete"].sum()
     total_fat_sel = df_diario_frete[col_fat_geral].sum()
     pct_frete_sel = (total_frete_sel / total_fat_sel * 100) if total_fat_sel > 0 else 0.0
@@ -214,7 +211,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     fig_diario = go.Figure()
 
-    # 1. Coluna de Faturamento (Azul) - Eixo Y1 com offsetgroup=1
     fig_diario.add_trace(
         go.Bar(
             x=df_diario_frete["Data_Str"],
@@ -231,7 +227,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         )
     )
 
-    # 2. Coluna de % Frete / Faturamento (Laranja) - Eixo Y2 com offsetgroup=2 (SEPARADAS LADO A LADO)
     fig_diario.add_trace(
         go.Bar(
             x=df_diario_frete["Data_Str"],

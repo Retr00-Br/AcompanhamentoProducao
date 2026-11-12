@@ -12,7 +12,7 @@ from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 
 st.set_page_config(
-    page_title="Dashboard Operacional & BI - Higimed",
+    page_title="Dashboard Operacional & BI",
     page_icon="📦",
     layout="wide",
 )
@@ -65,7 +65,7 @@ def build_processed_dataset():
         df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").astype("datetime64[ns]")
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer")
 
-    # 4. Frete Terceirizado
+    # 4. Frete Terceirizado (Todas as abas consolidadas: 08-09, 10, etc.)
     if df_frete_tratado is not None and not df_frete_tratado.empty:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")["Valor Total Frete"]
@@ -101,7 +101,7 @@ def main():
         st.stop()
 
     # -------------------------------------------------------------
-    # 📅 FILTRO TEMPORAL GERAL (COM INTERVALO DE DATAS POR SEMANA)
+    # 📅 FILTRO TEMPORAL GERAL (Faturamento & Produção)
     # -------------------------------------------------------------
     st.subheader("📅 Filtro Temporal Geral (Faturamento & Produção)")
     col_ft1, col_ft2 = st.columns([1.5, 3])
@@ -136,7 +136,6 @@ def main():
             dt_fim = df_diario[df_diario["Mes_Ano"] == mes_sel]["DATA"].max().date()
 
         else:
-            # 💡 NOMENCLATURA POR INTERVALO DE DATAS: "Semana do dia DD/MM - DD/MM"
             df_diario["Semana_Inicio"] = df_diario["DATA"].apply(lambda d: d - pd.Timedelta(days=d.weekday()))
             df_diario["Semana_Fim"] = df_diario["Semana_Inicio"] + pd.Timedelta(days=6)
 
@@ -179,24 +178,34 @@ def main():
     col_fat_ativa = f"{unidade_selecionada}_Fat"
     col_dev_ativa = f"{unidade_selecionada}_Dev"
 
-    # 1. KPIs Gerais do topo
-    render_kpis_gerais(df_filtrado)
+    # =========================================================================
+    # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS
+    # =========================================================================
+    tab_fat, tab_prod, tab_frete, tab_tabela = st.tabs([
+        "💰 Faturamento & Clientes",
+        "🏭 Produção & Expedição",
+        "🚚 Gestão & Custo de Frete",
+        "📜 Base Consolidada",
+    ])
 
-    # 2. Seção de Faturamento Monetário e Devoluções
-    render_secao_faturamento(df_filtrado, unidade_selecionada)
+    # ABA 1: FATURAMENTO E FATURAMENTO POR CLIENTE
+    with tab_fat:
+        render_kpis_gerais(df_filtrado)
+        render_secao_faturamento(df_filtrado, unidade_selecionada)
+        render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
-    # 3. Top Clientes por Faturamento (Acumulado x Mensal)
-    render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
+    # ABA 2: ANÁLISE DE PRODUÇÃO (SAUDÁVEIS VS BACKLOG | NOTAS VS EXPEDIDO)
+    with tab_prod:
+        render_kpis_medias(df_filtrado, unidade_selecionada)
+        render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
 
-    # 4. Seção de Produção e Expedição
-    render_kpis_medias(df_filtrado, unidade_selecionada)
-    render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
+    # ABA 3: CUSTO DE FRETE TERCEIRIZADO (LEITURA MULTI-ABAS)
+    with tab_frete:
+        render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
 
-    # 5. Seção de Frete Terceirizado
-    render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
-
-    # 6. Tabela Consolidada Operacional
-    render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
+    # ABA 4: TABELA CONSOLIDADA OPERACIONAL
+    with tab_tabela:
+        render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
 
 
 if __name__ == "__main__":
