@@ -14,17 +14,37 @@ def get_data_filepath(filename: str) -> str:
 
 
 def get_frete_filepath() -> str:
-    """Localiza dinamicamente a planilha de Custo de Fretes em ./data/ ou na raiz."""
+    """Localiza a planilha de Custo de Fretes mais recente (por data de modificação) em ./data/ ou na raiz."""
+    candidatos = []
     for folder in ["./data/", "."]:
         if os.path.exists(folder):
             for fname in os.listdir(folder):
                 if "FRETE" in fname.upper() and fname.endswith(".xlsx") and not fname.startswith("~$"):
-                    return os.path.join(folder, fname)
-    return ""
+                    full_path = os.path.join(folder, fname)
+                    candidatos.append((os.path.getmtime(full_path), full_path))
+
+    if not candidatos:
+        return ""
+
+    # Ordena do mais recente para o mais antigo para garantir leitura da versão mais nova (_4.xlsx, etc.)
+    candidatos.sort(key=lambda x: x[0], reverse=True)
+    return candidatos[0][1]
+
+
+def _get_files_signature() -> str:
+    """Gera uma assinatura baseada no nome e timestamp dos arquivos Excel para invalidar cache ao atualizar planilhas."""
+    sigs = []
+    for folder in ["./data/", "."]:
+        if os.path.exists(folder):
+            for fname in sorted(os.listdir(folder)):
+                if fname.endswith(".xlsx") and not fname.startswith("~$"):
+                    fp = os.path.join(folder, fname)
+                    sigs.append(f"{fp}:{os.path.getmtime(fp)}:{os.path.getsize(fp)}")
+    return "|".join(sigs)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def load_dados_producao() -> pd.DataFrame:
+def load_dados_producao(_sig: str = "") -> pd.DataFrame:
     """Carrega a base oficial de Produção garantindo sincronia total com LimpezaDados."""
     filepath = get_data_filepath("DadosProducao.xlsx")
     if not filepath:
@@ -42,13 +62,15 @@ def load_dados_producao() -> pd.DataFrame:
         else:
             return pd.DataFrame()
 
-        df_limpeza["DATA"] = pd.to_datetime(df_limpeza["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_limpeza.columns = [str(c).strip() for c in df_limpeza.columns]
+        df_limpeza["DATA"] = pd.to_datetime(df_limpeza["DATA"], errors="coerce").dt.normalize()
         df_limpeza.rename(columns={"Quantidade": "Notas_Realizadas"}, inplace=True)
         df_limpeza["Quantidade"] = df_limpeza["Notas_Realizadas"]
 
         if "DadosBacklogXSaudavel" in sheets:
             df_bs = pd.read_excel(excel, sheet_name="DadosBacklogXSaudavel")
-            df_bs["DATA"] = pd.to_datetime(df_bs["DATA"], errors="coerce").astype("datetime64[ns]")
+            df_bs.columns = [str(c).strip() for c in df_bs.columns]
+            df_bs["DATA"] = pd.to_datetime(df_bs["DATA"], errors="coerce").dt.normalize()
             df_prod = pd.merge(df_limpeza, df_bs[["DATA", "Saudavel", "Backlog"]], on="DATA", how="outer")
         else:
             df_prod = df_limpeza.copy()
@@ -57,7 +79,8 @@ def load_dados_producao() -> pd.DataFrame:
 
         if "DadosBrutos" in sheets:
             df_brutos = pd.read_excel(excel, sheet_name="DadosBrutos")
-            df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce").astype("datetime64[ns]")
+            df_brutos.columns = [str(c).strip() for c in df_brutos.columns]
+            df_brutos["DATA"] = pd.to_datetime(df_brutos["DATA"], errors="coerce").dt.normalize()
             col_sku = "SKU'S" if "SKU'S" in df_brutos.columns else ("SKUS" if "SKUS" in df_brutos.columns else df_brutos.columns[0])
             df_skus = df_brutos.groupby("DATA")[col_sku].count().reset_index(name="Total_SKUs")
             df_prod = pd.merge(df_prod, df_skus, on="DATA", how="outer")
@@ -75,7 +98,7 @@ def load_dados_producao() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def load_dados_romaneios() -> pd.DataFrame:
+def load_dados_romaneios(_sig: str = "") -> pd.DataFrame:
     """Carrega os volumes expedidos da aba DadosRomaneios."""
     filepath = get_data_filepath("DadosRomaneios.xlsx")
     if not filepath:
@@ -85,12 +108,13 @@ def load_dados_romaneios() -> pd.DataFrame:
         excel = pd.ExcelFile(filepath)
         sheet_target = "DadosRomaneios" if "DadosRomaneios" in excel.sheet_names else excel.sheet_names[0]
         df_rom = pd.read_excel(excel, sheet_name=sheet_target)
+        df_rom.columns = [str(c).strip() for c in df_rom.columns]
 
         col_dt = "Dt. Romaneio" if "Dt. Romaneio" in df_rom.columns else df_rom.columns[0]
         col_qtd = "Qtd. Expedição" if "Qtd. Expedição" in df_rom.columns else df_rom.columns[1]
 
         df_rom.rename(columns={col_dt: "DATA", col_qtd: "Qtd. Expedição"}, inplace=True)
-        df_rom["DATA"] = pd.to_datetime(df_rom["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_rom["DATA"] = pd.to_datetime(df_rom["DATA"], errors="coerce").dt.normalize()
         df_rom["Qtd. Expedição"] = pd.to_numeric(df_rom["Qtd. Expedição"], errors="coerce").fillna(0)
 
         return df_rom.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
@@ -101,7 +125,7 @@ def load_dados_romaneios() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def load_dados_faturamento():
+def load_dados_faturamento(_sig: str = ""):
     """Carrega tanto o Faturamento Bruto por filial quanto o Faturamento Detalhado por Cliente."""
     filepath = get_data_filepath("DadosFaturamento.xlsx")
     if not filepath:
@@ -123,33 +147,54 @@ def load_dados_faturamento():
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def load_dados_frete() -> pd.DataFrame:
-    """Lê TODAS as abas da planilha de Custo de Fretes (ex: '08-09', '10', etc.) e consolida os lançamentos."""
+def load_dados_frete(_sig: str = "") -> pd.DataFrame:
+    """Lê TODAS as abas/planilhas do arquivo de Custo de Fretes (ex: '08-09', '10', '11', etc.) e consolida tudo."""
     filepath = get_frete_filepath()
     if not filepath:
         return pd.DataFrame()
 
     try:
-        excel = pd.ExcelFile(filepath)
+        # sheet_name=None lê todas as abas do arquivo Excel em um dicionário {nome_aba: DataFrame}
+        todas_abas = pd.read_excel(filepath, sheet_name=None)
         dfs_abas = []
 
-        for sheet in excel.sheet_names:
-            df_sheet = pd.read_excel(excel, sheet_name=sheet)
+        for nome_aba, df_sheet in todas_abas.items():
+            if df_sheet is None or df_sheet.empty:
+                continue
+
+            df_sheet.columns = [str(c).strip() for c in df_sheet.columns]
             col_data = None
             col_valor = None
+            col_transp = None
+            col_nf = None
 
             for c in df_sheet.columns:
-                c_up = str(c).strip().upper()
-                if "EMISSÃO" in c_up or c_up == "DATA":
+                c_up = c.upper()
+                if "EMISSÃO" in c_up or "EMISSAO" in c_up or c_up == "DATA":
                     col_data = c
                 elif c_up == "VL. FRETE" or c_up == "VALOR FRETE":
                     col_valor = c
+                elif c_up == "TRANSPORTADORA":
+                    col_transp = c
+                elif c_up in ["VLR_NOTA_FISCAL", "NOTA_FISCAL", "VLR NOTA FISCAL"]:
+                    col_nf = c
 
             if col_data and col_valor:
-                df_temp = df_sheet[[col_data, col_valor]].copy()
-                df_temp.columns = ["DATA", "Valor Total Frete"]
-                df_temp["DATA"] = pd.to_datetime(df_temp["DATA"], errors="coerce")
-                df_temp["Valor Total Frete"] = pd.to_numeric(df_temp["Valor Total Frete"], errors="coerce").fillna(0.0)
+                df_temp = pd.DataFrame()
+                df_temp["DATA"] = pd.to_datetime(df_sheet[col_data], errors="coerce").dt.normalize()
+                df_temp["Valor Total Frete"] = pd.to_numeric(df_sheet[col_valor], errors="coerce").fillna(0.0)
+                df_temp["Transportadora"] = (
+                    df_sheet[col_transp].astype(str).str.strip().str.upper()
+                    if col_transp
+                    else "NÃO INFORMADA"
+                )
+                df_temp["Valor_NF"] = (
+                    pd.to_numeric(df_sheet[col_nf], errors="coerce").fillna(0.0)
+                    if col_nf
+                    else 0.0
+                )
+                df_temp["Aba_Origem"] = str(nome_aba).strip()
+
                 df_temp = df_temp.dropna(subset=["DATA"])
                 dfs_abas.append(df_temp)
 
@@ -166,60 +211,33 @@ def load_dados_frete() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def load_resumo_terceiros_MNOP() -> pd.DataFrame:
-    """Consolida o resumo lateral por transportadora terceirizada de TODAS as abas da planilha de frete."""
-    filepath = get_frete_filepath()
-    if not filepath:
-        return pd.DataFrame()
+def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
+    """Consolida o resumo por transportadora terceirizada de TODAS as abas da planilha de frete."""
+    df_frete = load_dados_frete(_sig)
+    if df_frete is not None and not df_frete.empty and "Transportadora" in df_frete.columns:
+        df_valid = df_frete[
+            ~df_frete["Transportadora"].isin(["NAN", "NONE", "", "NÃO INFORMADA"])
+            & ~df_frete["Transportadora"].str.contains("TOTAL")
+        ].copy()
 
-    try:
-        excel = pd.ExcelFile(filepath)
-        dfs_mnop = []
+        if not df_valid.empty:
+            df_consolidado = df_valid.groupby("Transportadora", as_index=False).agg(
+                Valor_NF=("Valor_NF", "sum"),
+                Valor_Frete=("Valor Total Frete", "sum"),
+            )
+            df_consolidado["Pct_Frete"] = (
+                df_consolidado["Valor_Frete"] / df_consolidado["Valor_NF"].replace(0, pd.NA)
+            ).fillna(0.0)
+            return df_consolidado.sort_values("Valor_Frete", ascending=False).reset_index(drop=True)
 
-        for sheet in excel.sheet_names:
-            df_s = pd.read_excel(excel, sheet_name=sheet)
-            if "Rótulos de Linha" in df_s.columns:
-                col_nf = (
-                    "Soma de Vlr_Nota_Fiscal"
-                    if "Soma de Vlr_Nota_Fiscal" in df_s.columns
-                    else ("Vlr. Nota Fiscal" if "Vlr. Nota Fiscal" in df_s.columns else None)
-                )
-                col_fr = (
-                    "Soma de VL. FRETE"
-                    if "Soma de VL. FRETE" in df_s.columns
-                    else ("VL. FRETE.1" if "VL. FRETE.1" in df_s.columns else None)
-                )
-
-                if col_nf and col_fr:
-                    df_m = df_s[["Rótulos de Linha", col_nf, col_fr]].dropna(subset=["Rótulos de Linha"]).copy()
-                    df_m.columns = ["Transportadora", "Valor_NF", "Valor_Frete"]
-                    df_m["Transportadora"] = df_m["Transportadora"].astype(str).str.strip().str.upper()
-                    df_m = df_m[~df_m["Transportadora"].str.contains("TOTAL")]
-                    df_m["Valor_NF"] = pd.to_numeric(df_m["Valor_NF"], errors="coerce").fillna(0.0)
-                    df_m["Valor_Frete"] = pd.to_numeric(df_m["Valor_Frete"], errors="coerce").fillna(0.0)
-                    dfs_mnop.append(df_m)
-
-        if not dfs_mnop:
-            return pd.DataFrame()
-
-        df_consolidado = (
-            pd.concat(dfs_mnop, ignore_index=True)
-            .groupby("Transportadora", as_index=False)[["Valor_NF", "Valor_Frete"]]
-            .sum()
-        )
-        df_consolidado["Pct_Frete"] = (df_consolidado["Valor_Frete"] / df_consolidado["Valor_NF"]).fillna(0.0)
-        return df_consolidado.sort_values("Valor_Frete", ascending=False).reset_index(drop=True)
-
-    except Exception as e:
-        st.error(f"Erro ao consolidar resumo de terceiros MNOP: {e}")
-        return pd.DataFrame()
+    return pd.DataFrame()
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def load_treated_data_cached():
-    """Carrega todas as bases unificadas e cacheadas."""
-    df_prod = load_dados_producao()
-    df_rom = load_dados_romaneios()
-    df_fat_clientes, df_fat_bruto = load_dados_faturamento()
-    df_frete = load_dados_frete()
+    """Carrega todas as bases unificadas invalidando o cache automaticamente se algum Excel mudar."""
+    sig = _get_files_signature()
+    df_prod = load_dados_producao(sig)
+    df_rom = load_dados_romaneios(sig)
+    df_fat_clientes, df_fat_bruto = load_dados_faturamento(sig)
+    df_frete = load_dados_frete(sig)
     return df_prod, df_rom, df_fat_clientes, df_fat_bruto, df_frete

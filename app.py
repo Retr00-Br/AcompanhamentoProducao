@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from utils.loader import load_treated_data_cached
+from utils.loader import load_treated_data_cached, _get_files_signature
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
 from components.kpis import render_kpis_gerais, render_kpis_medias
@@ -19,7 +19,7 @@ st.set_page_config(
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def build_processed_dataset():
+def build_processed_dataset(_sig: str = ""):
     """Unifica os dados de Produção, Romaneios, Faturamento e Frete."""
     (
         df_prod_tratado,
@@ -49,20 +49,20 @@ def build_processed_dataset():
     if renames:
         df_diario.rename(columns=renames, inplace=True)
 
-    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").astype("datetime64[ns]")
+    df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").dt.normalize()
 
     # 2. Romaneios / Expedição
     if df_rom_tratado is not None and not df_rom_tratado.empty:
         col_exp = "Qtd. Expedição" if "Qtd. Expedição" in df_rom_tratado.columns else df_rom_tratado.columns[1]
         df_r = df_rom_tratado.groupby("DATA")[col_exp].sum().reset_index(name="Total_Expedidos")
-        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_r["DATA"] = pd.to_datetime(df_r["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_r, on="DATA", how="outer")
     else:
         df_diario["Total_Expedidos"] = 0
 
     # 3. Faturamento
     if df_fat_unidades is not None and not df_fat_unidades.empty:
-        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer")
 
     # 4. Frete Terceirizado (Todas as abas consolidadas: 08-09, 10, etc.)
@@ -72,7 +72,7 @@ def build_processed_dataset():
             .sum()
             .reset_index(name="Total_Frete")
         )
-        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").astype("datetime64[ns]")
+        df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer")
 
     # Preenchimento numérico pós-merge
@@ -94,7 +94,8 @@ def main():
     ui.render_header()
 
     os.makedirs("./data/", exist_ok=True)
-    df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset()
+    sig = _get_files_signature()
+    df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset(sig)
 
     if df_diario is None or df_diario.empty:
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
@@ -188,22 +189,18 @@ def main():
         "📜 Base Consolidada",
     ])
 
-    # ABA 1: FATURAMENTO E FATURAMENTO POR CLIENTE
     with tab_fat:
         render_kpis_gerais(df_filtrado)
         render_secao_faturamento(df_filtrado, unidade_selecionada)
         render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
-    # ABA 2: ANÁLISE DE PRODUÇÃO (SAUDÁVEIS VS BACKLOG | NOTAS VS EXPEDIDO)
     with tab_prod:
         render_kpis_medias(df_filtrado, unidade_selecionada)
         render_graficos_producao(df_filtrado, col_fat_ativa, unidade_selecionada)
 
-    # ABA 3: CUSTO DE FRETE TERCEIRIZADO (LEITURA MULTI-ABAS)
     with tab_frete:
         render_secao_frete(df_diario, col_fat_ativa, df_frete_tratado)
 
-    # ABA 4: TABELA CONSOLIDADA OPERACIONAL
     with tab_tabela:
         render_tabela_consolidada(df_filtrado, col_fat_ativa, col_dev_ativa)
 
