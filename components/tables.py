@@ -71,87 +71,75 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         df["Mes_Str"] = "Total"
 
     df["Cliente_Loja_UF"] = df["Cliente"] + " (Lj " + df["Loja"] + " - " + df["UF"] + ")"
+    meses_ordenados = sorted(df["Mes_Str"].dropna().unique().tolist())
 
     # =========================================================================
-    # 1. RANKING TOP 10 CLIENTES (DIFERENCIADO POR LOJA & UF) EM GRÁFICO DE COLUNAS
+    # 1. RANKING TOP 10 CLIENTES (DIFERENCIADO POR LOJA & UF) — FILTRO POR MÊS
     # =========================================================================
-    st.markdown("#### 📊 Ranking Top 10 Clientes (Diferenciado por Loja & UF) — Evolução Mensal")
+    st.markdown("#### 📊 Ranking Top 10 Clientes (Diferenciado por Loja & UF)")
 
-    ranking_acum = (
-        df.groupby(["Cliente_Loja_UF", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
+    opcoes_mes_top10 = ["Todos os Meses (Acumulado)"] + meses_ordenados
+    mes_top10_sel = st.selectbox(
+        "📅 Selecione o Mês:",
+        options=opcoes_mes_top10,
+        index=0,
+        key="select_mes_top10_colunas",
+    )
+
+    df_top10_base = (
+        df[df["Mes_Str"] == mes_top10_sel].copy()
+        if mes_top10_sel != "Todos os Meses (Acumulado)"
+        else df.copy()
+    )
+
+    ranking_top10 = (
+        df_top10_base.groupby(["Cliente_Loja_UF", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
         .sum()
         .sort_values(col_valor, ascending=False)
         .head(10)
         .reset_index(drop=True)
     )
 
-    top10_labels = ranking_acum["Cliente_Loja_UF"].tolist()
-
-    clientes_visiveis = st.multiselect(
-        "Selecionar Clientes do Top 10 para exibir no gráfico de colunas:",
-        options=top10_labels,
-        default=top10_labels,
-        key="multiselect_top10_colunas",
-    )
-
-    df_top10_series = df[df["Cliente_Loja_UF"].isin(clientes_visiveis)].copy()
-    meses_ordenados = sorted(df["Mes_Str"].dropna().unique().tolist())
-
     fig_colunas = go.Figure()
 
-    for idx_rank, row_top in ranking_acum.iterrows():
+    for idx_rank, row_top in ranking_top10.iterrows():
         label_cli = row_top["Cliente_Loja_UF"]
-        if label_cli not in clientes_visiveis:
-            continue
-
-        total_cli = row_top[col_valor]
-        df_c = (
-            df_top10_series[df_top10_series["Cliente_Loja_UF"] == label_cli]
-            .groupby("Mes_Str")[col_valor]
-            .sum()
-            .reindex(meses_ordenados, fill_value=0.0)
-            .reset_index()
-        )
-        df_c.columns = ["Mes_Str", "Valor"]
+        valor_cli = row_top[col_valor]
 
         fig_colunas.add_trace(
             go.Bar(
-                x=df_c["Mes_Str"],
-                y=df_c["Valor"],
-                name=f"#{idx_rank + 1} {label_cli} ({_format_brl(total_cli)})",
-                marker=dict(line=dict(color="#000000", width=0.6)),
-                text=[_format_brl(v) if v > 0 else "" for v in df_c["Valor"]],
+                x=[f"#{idx_rank + 1} {label_cli}"],
+                y=[valor_cli],
+                name=f"#{idx_rank + 1} {label_cli} ({_format_brl(valor_cli)})",
+                marker=dict(line=dict(color="#000000", width=0.8)),
+                text=[_format_brl(valor_cli)],
                 textposition="outside",
-                textfont=dict(size=8, color="#000000"),
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
                 cliponaxis=False,
                 hovertemplate=(
                     f"<b>#{idx_rank + 1} {label_cli}</b><br>"
-                    "Mês: %{x}<br>"
-                    "Faturamento: R$ %{y:,.2f}<br>"
-                    f"Acumulado Período: {_format_brl(total_cli)}<extra></extra>"
+                    f"Período: {mes_top10_sel}<br>"
+                    "Faturamento: R$ %{y:,.2f}<extra></extra>"
                 ),
             )
         )
 
-    max_y_colunas = (
-        df_top10_series.groupby(["Cliente_Loja_UF", "Mes_Str"])[col_valor].sum().max()
-        if not df_top10_series.empty
-        else 100.0
-    )
+    max_y_colunas = ranking_top10[col_valor].max() if not ranking_top10.empty else 100.0
 
     fig_colunas.update_layout(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=12, family="Arial"),
-        height=580,
-        margin=dict(l=50, r=40, t=50, b=50),
+        height=560,
+        margin=dict(l=50, r=40, t=50, b=110),
         barmode="group",
-        bargap=0.18,
-        bargroupgap=0.04,
+        showlegend=True,
         xaxis=dict(
-            title=dict(text="<b>Competência (Mês)</b>", font=dict(size=13, color="#000000")),
+            title=dict(text="<b>Cliente (Loja - UF)</b>", font=dict(size=13, color="#000000")),
             type="category",
+            tickangle=-25,
+            tickfont=dict(size=10, color="#000000"),
             showgrid=False,
         ),
         yaxis=dict(
