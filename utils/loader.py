@@ -31,7 +31,7 @@ def get_frete_filepath() -> str:
 
 
 def _get_files_signature() -> str:
-    """Gera assinatura baseada no timestamp dos arquivos Excel."""
+    """Gera assinatura baseada no timestamp e tamanho dos arquivos Excel."""
     sigs = []
     for folder in ["./data/", "."]:
         if os.path.exists(folder):
@@ -147,7 +147,7 @@ def load_dados_faturamento(_sig: str = ""):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_dados_frete(_sig: str = "") -> pd.DataFrame:
-    """Lê TODAS as abas/planilhas do arquivo de Custo de Fretes (ex: '08-09', '10', '11', etc.) e consolida tudo."""
+    """Lê TODAS as abas da planilha de Custo de Fretes considerando estritamente as colunas A-U (índices 0 a 20)."""
     filepath = get_frete_filepath()
     if not filepath:
         return pd.DataFrame()
@@ -156,17 +156,20 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
         todas_abas = pd.read_excel(filepath, sheet_name=None)
         dfs_abas = []
 
-        for nome_aba, df_sheet in todas_abas.items():
-            if df_sheet is None or df_sheet.empty:
+        for nome_aba, df_raw in todas_abas.items():
+            if df_raw is None or df_raw.empty:
                 continue
 
+            # Restringe estritamente às colunas A até U (21 primeiras colunas)
+            df_sheet = df_raw.iloc[:, :21].copy()
             df_sheet.columns = [str(c).strip() for c in df_sheet.columns]
+
             col_data = None
             col_valor = None
             col_transp = None
             col_nf = None
 
-            for c in df_sheet.columns:
+            for idx, c in enumerate(df_sheet.columns):
                 c_up = c.upper()
                 if "EMISSÃO" in c_up or "EMISSAO" in c_up or c_up == "DATA":
                     col_data = c
@@ -176,6 +179,14 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
                     col_transp = c
                 elif c_up in ["VLR_NOTA_FISCAL", "NOTA_FISCAL", "VLR NOTA FISCAL"]:
                     col_nf = c
+
+            # Fallback posicional padrão (Col C = VL. FRETE, Col D = TRANSPORTADORA, Col H = EMISSÃO CTE/NFE)
+            if col_valor is None and df_sheet.shape[1] > 2:
+                col_valor = df_sheet.columns[2]
+            if col_transp is None and df_sheet.shape[1] > 3:
+                col_transp = df_sheet.columns[3]
+            if col_data is None and df_sheet.shape[1] > 7:
+                col_data = df_sheet.columns[7]
 
             if col_data and col_valor:
                 df_temp = pd.DataFrame()
@@ -204,31 +215,64 @@ def load_dados_frete(_sig: str = "") -> pd.DataFrame:
         return df_frete_total.sort_values("DATA").reset_index(drop=True)
 
     except Exception as e:
-        st.error(f"Erro ao ler abas da planilha de frete: {e}")
+        st.error(f"Erro ao ler abas (A-U) da planilha de frete: {e}")
         return pd.DataFrame()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_resumo_terceiros_MNOP(_sig: str = "") -> pd.DataFrame:
-    """Consolida o resumo por transportadora terceirizada de TODAS as abas da planilha de frete."""
-    df_frete = load_dados_frete(_sig)
-    if df_frete is not None and not df_frete.empty and "Transportadora" in df_frete.columns:
-        df_valid = df_frete[
-            ~df_frete["Transportadora"].isin(["NAN", "NONE", "", "NÃO INFORMADA"])
-            & ~df_frete["Transportadora"].str.contains("TOTAL")
-        ].copy()
+    """Lê e consolida o resumo lateral por transportadora dentro das colunas A-U de TODAS as abas da planilha de frete."""
+    filepath = get_frete_filepath()
+    if not filepath:
+        return pd.DataFrame()
 
-        if not df_valid.empty:
-            df_consolidado = df_valid.groupby("Transportadora", as_index=False).agg(
-                Valor_NF=("Valor_NF", "sum"),
-                Valor_Frete=("Valor Total Frete", "sum"),
-            )
-            df_consolidado["Pct_Frete"] = (
-                df_consolidado["Valor_Frete"] / df_consolidado["Valor_NF"].replace(0, pd.NA)
-            ).fillna(0.0)
-            return df_consolidado.sort_values("Valor_Frete", ascending=False).reset_index(drop=True)
+    try:
+        todas_abas = pd.read_excel(filepath, sheet_name=None)
+        dfs_resumo = []
 
-    return pd.DataFrame()
+        for nome_aba, df_raw in todas_abas.items():
+            if df_raw is None or df_raw.empty:
+                continue
+
+            # Considera estritamente as colunas A até U
+            df_au = df_raw.iloc[:, :21].copy()
+            cols_upper = [str(c).strip().upper() for c in df_au.columns]
+
+            # Localiza o início da tabela dinâmica lateral ("Rótulos de Linha", ex: Col M na aba 08-09, Col R na aba 10)
+            idx_rot = next((i for i, c in enumerate(cols_upper) if "RÓTULOS" in c or "ROTULOS" in c), None)
+
+            if idx_rot is not None and idx_rot + 2 < df_au.shape[1]:
+                col_nome = df_au.columns[idx_rot]
+                col_nf_sum = df_au.columns[idx_rot + 1]
+                col_fr_sum = df_au.columns[idx_rot + 2]
+
+                df_sub = df_au[[col_nome, col_nf_sum, col_fr_sum]].dropna(subset=[col_nome]).copy()
+                df_sub.columns = ["Transportadora", "Valor_NF", "Valor_Frete"]
+                df_sub["Transportadora"] = df_sub["Transportadora"].astype(str).str.strip().str.upper()
+                df_sub = df_sub[
+                    ~df_sub["Transportadora"].str.contains("TOTAL")
+                    & ~df_sub["Transportadora"].isin(["NAN", "NONE", ""])
+                ]
+                df_sub["Valor_NF"] = pd.to_numeric(df_sub["Valor_NF"], errors="coerce").fillna(0.0)
+                df_sub["Valor_Frete"] = pd.to_numeric(df_sub["Valor_Frete"], errors="coerce").fillna(0.0)
+                dfs_resumo.append(df_sub)
+
+        if not dfs_resumo:
+            return pd.DataFrame()
+
+        df_consolidado = (
+            pd.concat(dfs_resumo, ignore_index=True)
+            .groupby("Transportadora", as_index=False)[["Valor_NF", "Valor_Frete"]]
+            .sum()
+        )
+        df_consolidado["Pct_Frete"] = (
+            df_consolidado["Valor_Frete"] / df_consolidado["Valor_NF"].replace(0, pd.NA)
+        ).fillna(0.0)
+        return df_consolidado.sort_values("Valor_Frete", ascending=False).reset_index(drop=True)
+
+    except Exception as e:
+        st.error(f"Erro ao consolidar resumo de transportadoras (A-U): {e}")
+        return pd.DataFrame()
 
 
 def load_treated_data_cached():

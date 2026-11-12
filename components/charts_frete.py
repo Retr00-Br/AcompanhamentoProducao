@@ -1,6 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from utils.loader import load_resumo_terceiros_MNOP
 
 
 def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tratado: pd.DataFrame):
@@ -12,7 +13,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     col_fat_geral = "Todas as Unidades (Geral)_Fat" if "Todas as Unidades (Geral)_Fat" in df_diario.columns else col_fat_ativa
 
-    # Garante normalização de data para evitar perda de dias entre abas
     df_d = df_diario.copy()
     df_d["DATA"] = pd.to_datetime(df_d["DATA"]).dt.normalize()
 
@@ -117,7 +117,6 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
 
     frete_diario_agg = df_f.groupby("DATA")["Valor Total Frete"].sum().reset_index()
 
-    # Usa left join a partir do frete para não descartar dias presentes na Planilha 2 (mês 10)
     df_diario_frete_base = pd.merge(
         frete_diario_agg,
         df_d[["DATA", col_fat_geral]],
@@ -286,95 +285,80 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     st.plotly_chart(fig_diario, use_container_width=True)
 
     # =========================================================================
-    # 3. PIZZAS E TABELA TERCEIROS MNOP (FILTRÁVEL POR PERÍODO SELECIONADO)
+    # 3. PIZZAS E TABELA TERCEIROS (CONSOLIDADO A-U DE TODAS AS ABAS)
     # =========================================================================
-    df_f_periodo = df_f[
-        (df_f["DATA"].dt.date >= dt_inicio_f) & (df_f["DATA"].dt.date <= dt_fim_f)
-    ].copy()
+    df_mnop_clean = load_resumo_terceiros_MNOP()
 
-    if "Transportadora" in df_f_periodo.columns and not df_f_periodo.empty:
-        df_mnop_clean = df_f_periodo[
-            ~df_f_periodo["Transportadora"].isin(["NAN", "NONE", "", "NÃO INFORMADA"])
-            & ~df_f_periodo["Transportadora"].str.contains("TOTAL")
-        ].groupby("Transportadora", as_index=False).agg(
-            Valor_NF=("Valor_NF", "sum"),
-            Valor_Frete=("Valor Total Frete", "sum"),
+    if df_mnop_clean is not None and not df_mnop_clean.empty:
+        st.markdown("---")
+        st.markdown("### 🍕 Distribuição por Transportadora Terceirizada (Consolidado Abas 08-09 & 10)")
+
+        col_p1, col_p2 = st.columns(2)
+
+        with col_p1:
+            fig_p1 = go.Figure(
+                go.Pie(
+                    labels=df_mnop_clean["Transportadora"],
+                    values=df_mnop_clean["Valor_Frete"],
+                    hole=0.45,
+                    textinfo="percent",
+                    textposition="inside",
+                    hoverinfo="label+value+percent",
+                    textfont=dict(size=11),
+                    hovertemplate="<b>%{label}</b><br>Frete: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>",
+                )
+            )
+            fig_p1.update_layout(
+                title=dict(text="<b>Participação no Custo Total de Frete</b>", font=dict(size=14, color="#000000")),
+                template="plotly_white",
+                height=460,
+                margin=dict(l=20, r=20, t=50, b=20),
+                showlegend=True,
+                legend=dict(orientation="v", y=0.5, x=1.02),
+            )
+            st.plotly_chart(fig_p1, use_container_width=True)
+
+        with col_p2:
+            fig_p2 = go.Figure(
+                go.Pie(
+                    labels=df_mnop_clean["Transportadora"],
+                    values=df_mnop_clean["Valor_NF"],
+                    hole=0.45,
+                    textinfo="percent",
+                    textposition="inside",
+                    hoverinfo="label+value+percent",
+                    textfont=dict(size=11),
+                    hovertemplate="<b>%{label}</b><br>Valor NF: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>",
+                )
+            )
+            fig_p2.update_layout(
+                title=dict(text="<b>Participação no Faturamento Atendido (NFs)</b>", font=dict(size=14, color="#000000")),
+                template="plotly_white",
+                height=460,
+                margin=dict(l=20, r=20, t=50, b=20),
+                showlegend=True,
+                legend=dict(orientation="v", y=0.5, x=1.02),
+            )
+            st.plotly_chart(fig_p2, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📋 Tabela Resumo: Gastos por Transportadora Terceirizada (Colunas A-U)")
+
+        df_tabela_mnop = df_mnop_clean.copy()
+        df_tabela_mnop["Valor_NF_Str"] = df_tabela_mnop["Valor_NF"].apply(
+            lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         )
-        df_mnop_clean["Pct_Frete"] = (
-            df_mnop_clean["Valor_Frete"] / df_mnop_clean["Valor_NF"].replace(0, pd.NA)
-        ).fillna(0.0)
-        df_mnop_clean = df_mnop_clean.sort_values(by="Valor_Frete", ascending=False).reset_index(drop=True)
+        df_tabela_mnop["Valor_Frete_Str"] = df_tabela_mnop["Valor_Frete"].apply(
+            lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+        df_tabela_mnop["Pct_Frete_Str"] = df_tabela_mnop["Pct_Frete"].apply(lambda v: f"{v*100:.2f}%")
 
-        if not df_mnop_clean.empty:
-            st.markdown("---")
-            st.markdown("### 🍕 Distribuição por Transportadora Terceirizada (Período Selecionado)")
+        df_tabela_final = df_tabela_mnop[["Transportadora", "Valor_NF_Str", "Valor_Frete_Str", "Pct_Frete_Str"]].rename(
+            columns={
+                "Valor_NF_Str": "Faturamento Atendido (NFs)",
+                "Valor_Frete_Str": "Valor Total Frete (R$)",
+                "Pct_Frete_Str": "% Custo Frete / NF",
+            }
+        )
 
-            col_p1, col_p2 = st.columns(2)
-
-            with col_p1:
-                fig_p1 = go.Figure(
-                    go.Pie(
-                        labels=df_mnop_clean["Transportadora"],
-                        values=df_mnop_clean["Valor_Frete"],
-                        hole=0.45,
-                        textinfo="percent",
-                        textposition="inside",
-                        hoverinfo="label+value+percent",
-                        textfont=dict(size=11),
-                        hovertemplate="<b>%{label}</b><br>Frete: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>",
-                    )
-                )
-                fig_p1.update_layout(
-                    title=dict(text="<b>Participação no Custo Total de Frete</b>", font=dict(size=14, color="#000000")),
-                    template="plotly_white",
-                    height=460,
-                    margin=dict(l=20, r=20, t=50, b=20),
-                    showlegend=True,
-                    legend=dict(orientation="v", y=0.5, x=1.02),
-                )
-                st.plotly_chart(fig_p1, use_container_width=True)
-
-            with col_p2:
-                fig_p2 = go.Figure(
-                    go.Pie(
-                        labels=df_mnop_clean["Transportadora"],
-                        values=df_mnop_clean["Valor_NF"],
-                        hole=0.45,
-                        textinfo="percent",
-                        textposition="inside",
-                        hoverinfo="label+value+percent",
-                        textfont=dict(size=11),
-                        hovertemplate="<b>%{label}</b><br>Valor NF: R$ %{value:,.2f}<br>Participação: %{percent}<extra></extra>",
-                    )
-                )
-                fig_p2.update_layout(
-                    title=dict(text="<b>Participação no Faturamento Atendido (NFs)</b>", font=dict(size=14, color="#000000")),
-                    template="plotly_white",
-                    height=460,
-                    margin=dict(l=20, r=20, t=50, b=20),
-                    showlegend=True,
-                    legend=dict(orientation="v", y=0.5, x=1.02),
-                )
-                st.plotly_chart(fig_p2, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("### 📋 Tabela Resumo: Gastos por Transportadora Terceirizada (MNOP)")
-
-            df_tabela_mnop = df_mnop_clean.copy()
-            df_tabela_mnop["Valor_NF_Str"] = df_tabela_mnop["Valor_NF"].apply(
-                lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-            df_tabela_mnop["Valor_Frete_Str"] = df_tabela_mnop["Valor_Frete"].apply(
-                lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-            df_tabela_mnop["Pct_Frete_Str"] = df_tabela_mnop["Pct_Frete"].apply(lambda v: f"{v*100:.2f}%")
-
-            df_tabela_final = df_tabela_mnop[["Transportadora", "Valor_NF_Str", "Valor_Frete_Str", "Pct_Frete_Str"]].rename(
-                columns={
-                    "Valor_NF_Str": "Faturamento Atendido (NFs)",
-                    "Valor_Frete_Str": "Valor Total Frete (R$)",
-                    "Pct_Frete_Str": "% Custo Frete / NF",
-                }
-            )
-
-            st.dataframe(df_tabela_final, use_container_width=True)
+        st.dataframe(df_tabela_final, use_container_width=True)
