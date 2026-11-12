@@ -73,9 +73,9 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     df["Cliente_Loja_UF"] = df["Cliente"] + " (Lj " + df["Loja"] + " - " + df["UF"] + ")"
 
     # =========================================================================
-    # 1. RANKING TOP 10 CLIENTES (DIFERENCIADO POR LOJA & UF) EM GRÁFICO DE LINHAS
+    # 1. RANKING TOP 10 CLIENTES (DIFERENCIADO POR LOJA & UF) EM GRÁFICO DE COLUNAS
     # =========================================================================
-    st.markdown("#### 📈 Ranking Top 10 Clientes (Diferenciado por Loja & UF) — Evolução Mensal")
+    st.markdown("#### 📊 Ranking Top 10 Clientes (Diferenciado por Loja & UF) — Evolução Mensal")
 
     ranking_acum = (
         df.groupby(["Cliente_Loja_UF", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
@@ -88,16 +88,16 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     top10_labels = ranking_acum["Cliente_Loja_UF"].tolist()
 
     clientes_visiveis = st.multiselect(
-        "Selecionar Clientes do Top 10 para exibir no gráfico de linhas:",
+        "Selecionar Clientes do Top 10 para exibir no gráfico de colunas:",
         options=top10_labels,
         default=top10_labels,
-        key="multiselect_top10_linhas",
+        key="multiselect_top10_colunas",
     )
 
     df_top10_series = df[df["Cliente_Loja_UF"].isin(clientes_visiveis)].copy()
     meses_ordenados = sorted(df["Mes_Str"].dropna().unique().tolist())
 
-    fig_linhas = go.Figure()
+    fig_colunas = go.Figure()
 
     for idx_rank, row_top in ranking_acum.iterrows():
         label_cli = row_top["Cliente_Loja_UF"]
@@ -114,17 +114,16 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         )
         df_c.columns = ["Mes_Str", "Valor"]
 
-        fig_linhas.add_trace(
-            go.Scatter(
+        fig_colunas.add_trace(
+            go.Bar(
                 x=df_c["Mes_Str"],
                 y=df_c["Valor"],
-                mode="lines+markers+text",
                 name=f"#{idx_rank + 1} {label_cli} ({_format_brl(total_cli)})",
-                line=dict(width=3),
-                marker=dict(size=9),
+                marker=dict(line=dict(color="#000000", width=0.6)),
                 text=[_format_brl(v) if v > 0 else "" for v in df_c["Valor"]],
-                textposition="top center",
-                textfont=dict(size=9),
+                textposition="outside",
+                textfont=dict(size=8, color="#000000"),
+                cliponaxis=False,
                 hovertemplate=(
                     f"<b>#{idx_rank + 1} {label_cli}</b><br>"
                     "Mês: %{x}<br>"
@@ -134,27 +133,32 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
             )
         )
 
-    max_y_linhas = df_top10_series.groupby(["Cliente_Loja_UF", "Mes_Str"])[col_valor].sum().max() if not df_top10_series.empty else 100.0
+    max_y_colunas = (
+        df_top10_series.groupby(["Cliente_Loja_UF", "Mes_Str"])[col_valor].sum().max()
+        if not df_top10_series.empty
+        else 100.0
+    )
 
-    fig_linhas.update_layout(
+    fig_colunas.update_layout(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=12, family="Arial"),
-        height=560,
-        margin=dict(l=50, r=40, t=40, b=50),
-        hovermode="x unified",
+        height=580,
+        margin=dict(l=50, r=40, t=50, b=50),
+        barmode="group",
+        bargap=0.18,
+        bargroupgap=0.04,
         xaxis=dict(
             title=dict(text="<b>Competência (Mês)</b>", font=dict(size=13, color="#000000")),
             type="category",
-            showgrid=True,
-            gridcolor="#e9ecef",
+            showgrid=False,
         ),
         yaxis=dict(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max(max_y_linhas * 1.18, 100.0)],
+            range=[0, max(max_y_colunas * 1.22, 100.0)],
         ),
         legend=dict(
             orientation="v",
@@ -165,7 +169,7 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         ),
     )
 
-    st.plotly_chart(fig_linhas, use_container_width=True)
+    st.plotly_chart(fig_colunas, use_container_width=True)
 
     # =========================================================================
     # 2. MAPA DO BRASIL POR UF + RANKING DE FATURAMENTO POR UF
