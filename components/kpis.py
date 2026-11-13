@@ -19,20 +19,23 @@ def render_kpis_gerais(df_filtrado: pd.DataFrame, unidade_selecionada: str = "To
     if col_dev not in df_filtrado.columns:
         col_dev = "Todas as Unidades (Geral)_Dev"
 
-    valor_planilha_fat = df_filtrado[col_fat].sum() if col_fat in df_filtrado.columns else 0.0
-    dev_raw = df_filtrado[col_dev].sum() if col_dev in df_filtrado.columns else 0.0
-    dev_abs = abs(dev_raw)
-
-    # Na aba FaturamentoBruto, a coluna TOT (Todas as Unidades (Geral)_Fat) já é o valor líquido (Bruto - Devoluções),
-    # enquanto as colunas individuais das filiais (0101, 0102, 0103, 0104) trazem o faturamento bruto da filial.
-    if unidade_selecionada == "Todas as Unidades (Geral)":
-        fat_liquido = valor_planilha_fat
-        fat_bruto = fat_liquido + dev_abs
-    else:
-        fat_bruto = valor_planilha_fat
-        fat_liquido = fat_bruto - dev_abs
-
+    dev_abs = abs(df_filtrado[col_dev].sum()) if col_dev in df_filtrado.columns else 0.0
     dev_exibicao = -dev_abs if dev_abs > 0 else 0.0
+
+    # Se existir a coluna _Liq explícita (gerada pelo parser atualizado), usa direto;
+    # caso contrário, calcula a partir de _Fat garantindo sempre Bruto >= Líquido
+    if unidade_selecionada == "Todas as Unidades (Geral)" and "Todas as Unidades (Geral)_Liq" in df_filtrado.columns:
+        fat_bruto = df_filtrado["Todas as Unidades (Geral)_Fat"].sum()
+        fat_liquido = df_filtrado["Todas as Unidades (Geral)_Liq"].sum()
+    else:
+        val_fat = df_filtrado[col_fat].sum() if col_fat in df_filtrado.columns else 0.0
+        if unidade_selecionada == "Todas as Unidades (Geral)":
+            # Caso o parser antigo ainda tenha gravado o líquido na coluna _Fat
+            fat_liquido = val_fat
+            fat_bruto = fat_liquido + dev_abs
+        else:
+            fat_bruto = val_fat
+            fat_liquido = fat_bruto - dev_abs
 
     dias_com_fat = int((df_filtrado[col_fat] > 0).sum()) if col_fat in df_filtrado.columns else len(df_filtrado)
     media_fat_dia = (fat_liquido / dias_com_fat) if dias_com_fat > 0 else 0.0
