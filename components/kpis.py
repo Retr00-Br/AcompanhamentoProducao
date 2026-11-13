@@ -3,7 +3,8 @@ import streamlit as st
 
 
 def _fmt_brl(val: float) -> str:
-    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    sinal = "-" if val < 0 else ""
+    return f"{sinal}R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def render_kpis_gerais(df_filtrado: pd.DataFrame, unidade_selecionada: str = "Todas as Unidades (Geral)"):
@@ -18,16 +19,27 @@ def render_kpis_gerais(df_filtrado: pd.DataFrame, unidade_selecionada: str = "To
     if col_dev not in df_filtrado.columns:
         col_dev = "Todas as Unidades (Geral)_Dev"
 
-    fat_total = df_filtrado[col_fat].sum() if col_fat in df_filtrado.columns else 0.0
-    dev_total = df_filtrado[col_dev].sum() if col_dev in df_filtrado.columns else 0.0
-    fat_liquido = fat_total + dev_total  # Devoluções já vêm negativas na planilha
+    valor_planilha_fat = df_filtrado[col_fat].sum() if col_fat in df_filtrado.columns else 0.0
+    dev_raw = df_filtrado[col_dev].sum() if col_dev in df_filtrado.columns else 0.0
+    dev_abs = abs(dev_raw)
+
+    # Na aba FaturamentoBruto, a coluna TOT (Todas as Unidades (Geral)_Fat) já é o valor líquido (Bruto - Devoluções),
+    # enquanto as colunas individuais das filiais (0101, 0102, 0103, 0104) trazem o faturamento bruto da filial.
+    if unidade_selecionada == "Todas as Unidades (Geral)":
+        fat_liquido = valor_planilha_fat
+        fat_bruto = fat_liquido + dev_abs
+    else:
+        fat_bruto = valor_planilha_fat
+        fat_liquido = fat_bruto - dev_abs
+
+    dev_exibicao = -dev_abs if dev_abs > 0 else 0.0
 
     dias_com_fat = int((df_filtrado[col_fat] > 0).sum()) if col_fat in df_filtrado.columns else len(df_filtrado)
-    media_fat_dia = (fat_total / dias_com_fat) if dias_com_fat > 0 else 0.0
+    media_fat_dia = (fat_liquido / dias_com_fat) if dias_com_fat > 0 else 0.0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 Faturamento Bruto", _fmt_brl(fat_total))
-    c2.metric("↩️ Devoluções Totais", _fmt_brl(dev_total))
+    c1.metric("💰 Faturamento Bruto", _fmt_brl(fat_bruto))
+    c2.metric("↩️ Devoluções Totais", _fmt_brl(dev_exibicao))
     c3.metric("💵 Faturamento Líquido", _fmt_brl(fat_liquido))
     c4.metric("📊 Média Diária Faturamento", _fmt_brl(media_fat_dia), delta=f"{dias_com_fat} dias úteis", delta_color="off")
 
