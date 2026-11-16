@@ -6,6 +6,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
+FILIAL_LABELS = {
+    "101": "0101 - Matriz",
+    "102": "0102 - Filial RJ",
+    "103": "0103 - Filial CP",
+    "104": "0104 - Filial SBC",
+}
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_brazil_states_geojson():
     """Carrega o GeoJSON oficial dos estados brasileiros (sigla UF) com cache."""
@@ -19,6 +27,99 @@ def _load_brazil_states_geojson():
 
 def _format_brl(val: float) -> str:
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _normalizar_filial(val) -> str:
+    s = str(val).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    s_clean = s.lstrip("0")
+    return FILIAL_LABELS.get(s_clean, f"Filial {s}")
+
+
+def _filtrar_por_filial_e_mes(
+    df_base: pd.DataFrame,
+    filial_sel: str,
+    mes_sel: str,
+) -> pd.DataFrame:
+    df_out = df_base.copy()
+    if filial_sel != "Todas as Filiais (Acumulado Geral)":
+        df_out = df_out[df_out["Filial_Nome"] == filial_sel].copy()
+    if mes_sel != "Todos os Meses (Acumulado Geral)":
+        df_out = df_out[df_out["Mes_Str"] == mes_sel].copy()
+    return df_out
+
+
+def _plot_ranking_clientes_colunas(
+    df_ranking: pd.DataFrame,
+    col_valor: str,
+    periodo_label: str,
+    filial_label: str,
+    cor_barra: str = "#1f77b4",
+):
+    if df_ranking.empty:
+        st.info("Nenhum lançamento de cliente encontrado para esta combinação de Filial e Mês.")
+        return
+
+    fig_colunas = go.Figure()
+
+    for idx_rank, row_top in df_ranking.iterrows():
+        label_cli = row_top["Cliente_Loja_UF_Filial"]
+        valor_cli = row_top[col_valor]
+
+        fig_colunas.add_trace(
+            go.Bar(
+                x=[f"#{idx_rank + 1} {label_cli}"],
+                y=[valor_cli],
+                name=f"#{idx_rank + 1} {label_cli} ({_format_brl(valor_cli)})",
+                marker=dict(line=dict(color="#000000", width=0.8)),
+                text=[_format_brl(valor_cli)],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate=(
+                    f"<b>#{idx_rank + 1} {label_cli}</b><br>"
+                    f"Filial: {filial_label}<br>"
+                    f"Período: {periodo_label}<br>"
+                    "Faturamento: R$ %{y:,.2f}<extra></extra>"
+                ),
+            )
+        )
+
+    max_y_colunas = df_ranking[col_valor].max() if not df_ranking.empty else 100.0
+
+    fig_colunas.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=12, family="Arial"),
+        height=560,
+        margin=dict(l=50, r=40, t=50, b=120),
+        barmode="group",
+        showlegend=True,
+        xaxis=dict(
+            title=dict(text="<b>Cliente (Filial | Loja - UF)</b>", font=dict(size=13, color="#000000")),
+            type="category",
+            tickangle=-25,
+            tickfont=dict(size=10, color="#000000"),
+            showgrid=False,
+        ),
+        yaxis=dict(
+            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
+            showgrid=True,
+            gridcolor="#e9ecef",
+            range=[0, max(max_y_colunas * 1.24, 100.0)],
+        ),
+        legend=dict(
+            orientation="v",
+            y=1.0,
+            x=1.02,
+            xanchor="left",
+            font=dict(size=11, color="#000000"),
+        ),
+    )
+
+    st.plotly_chart(fig_colunas, use_container_width=True)
 
 
 def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada: str = "Todas as Unidades (Geral)"):
@@ -35,6 +136,13 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     col_valor = next((c for c in df.columns if "FATUR" in c.upper() or "VALOR" in c.upper()), df.columns[-1])
     df[col_valor] = pd.to_numeric(df[col_valor], errors="coerce").fillna(0.0)
 
+    if "Filial" in df.columns:
+        df["Filial_Nome"] = df["Filial"].apply(_normalizar_filial)
+        df["Filial_Cod"] = df["Filial"].astype(str).str.replace(".0", "", regex=False).str.strip().str.zfill(4)
+    else:
+        df["Filial_Nome"] = "0101 - Matriz"
+        df["Filial_Cod"] = "0101"
+
     if "Loja" in df.columns:
         df["Loja"] = df["Loja"].fillna("-").apply(
             lambda x: str(int(float(x))) if str(x).replace(".", "", 1).isdigit() else str(x).strip()
@@ -50,132 +158,115 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     if "Cliente" in df.columns:
         df["Cliente"] = df["Cliente"].fillna("NÃO INFORMADO").astype(str).str.strip().str.upper()
 
-    # Filtro por Filial caso não seja Geral
-    if "Filial" in df.columns and unidade_selecionada != "Todas as Unidades (Geral)":
-        cod_filial = unidade_selecionada.split("-")[0].strip().lstrip("0")
-        df["Filial_Str"] = df["Filial"].astype(str).str.strip().str.lstrip("0")
-        if cod_filial in df["Filial_Str"].unique():
-            df = df[df["Filial_Str"] == cod_filial].copy()
-        else:
-            st.info(f"A aba 'Faturamento por cliente' não possui lançamentos registrados para a filial {unidade_selecionada}.")
-            return
-
-    if df.empty:
-        st.warning("Nenhum faturamento encontrado para o filtro selecionado.")
-        return
-
     if "Mês" in df.columns:
         df["Mes_Dt"] = pd.to_datetime(df["Mês"], errors="coerce")
         df["Mes_Str"] = df["Mes_Dt"].dt.strftime("%Y-%m")
     else:
         df["Mes_Str"] = "Total"
 
-    df["Cliente_Loja_UF"] = df["Cliente"] + " (Lj " + df["Loja"] + " - " + df["UF"] + ")"
+    df["Cliente_Loja_UF_Filial"] = (
+        df["Cliente"] + " [" + df["Filial_Cod"] + " | Lj " + df["Loja"] + " - " + df["UF"] + "]"
+    )
+
     meses_ordenados = sorted(df["Mes_Str"].dropna().unique().tolist())
+    filiais_disponiveis = sorted(df["Filial_Nome"].dropna().unique().tolist())
+
+    opcoes_filiais_cli = ["Todas as Filiais (Acumulado Geral)"] + filiais_disponiveis
+    opcoes_meses_cli = ["Todos os Meses (Acumulado Geral)"] + meses_ordenados
 
     # =========================================================================
-    # 1. RANKING TOP 10 CLIENTES (DIFERENCIADO POR LOJA & UF) — FILTRO POR MÊS
+    # 1. RANKING TOP 10 CLIENTES (MAIOR FATURAMENTO) POR FILIAL & MÊS
     # =========================================================================
-    st.markdown("#### 📊 Ranking Top 10 Clientes (Diferenciado por Loja & UF)")
+    st.markdown("#### 📊 Ranking Top 10 Clientes — Maior Faturamento (Diferenciado por Filial, Loja & UF)")
 
-    opcoes_mes_top10 = ["Todos os Meses (Acumulado)"] + meses_ordenados
-    mes_top10_sel = st.selectbox(
-        "📅 Selecione o Mês:",
-        options=opcoes_mes_top10,
-        index=0,
-        key="select_mes_top10_colunas",
-    )
+    col_f_top1, col_f_top2 = st.columns(2)
+    with col_f_top1:
+        filial_top10_sel = st.selectbox(
+            "🏢 Filtrar Clientes por Filial (Top 10):",
+            options=opcoes_filiais_cli,
+            index=0,
+            key="select_filial_top10_colunas",
+        )
+    with col_f_top2:
+        mes_top10_sel = st.selectbox(
+            "📅 Selecione o Mês (Top 10):",
+            options=opcoes_meses_cli,
+            index=0,
+            key="select_mes_top10_colunas",
+        )
 
-    df_top10_base = (
-        df[df["Mes_Str"] == mes_top10_sel].copy()
-        if mes_top10_sel != "Todos os Meses (Acumulado)"
-        else df.copy()
-    )
+    df_top10_base = _filtrar_por_filial_e_mes(df, filial_top10_sel, mes_top10_sel)
 
     ranking_top10 = (
-        df_top10_base.groupby(["Cliente_Loja_UF", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
+        df_top10_base.groupby(["Cliente_Loja_UF_Filial", "Filial_Nome", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
         .sum()
         .sort_values(col_valor, ascending=False)
         .head(10)
         .reset_index(drop=True)
     )
 
-    fig_colunas = go.Figure()
-
-    for idx_rank, row_top in ranking_top10.iterrows():
-        label_cli = row_top["Cliente_Loja_UF"]
-        valor_cli = row_top[col_valor]
-
-        fig_colunas.add_trace(
-            go.Bar(
-                x=[f"#{idx_rank + 1} {label_cli}"],
-                y=[valor_cli],
-                name=f"#{idx_rank + 1} {label_cli} ({_format_brl(valor_cli)})",
-                marker=dict(line=dict(color="#000000", width=0.8)),
-                text=[_format_brl(valor_cli)],
-                textposition="outside",
-                textfont=dict(size=10, color="#000000", family="Arial Black"),
-                cliponaxis=False,
-                hovertemplate=(
-                    f"<b>#{idx_rank + 1} {label_cli}</b><br>"
-                    f"Período: {mes_top10_sel}<br>"
-                    "Faturamento: R$ %{y:,.2f}<extra></extra>"
-                ),
-            )
-        )
-
-    max_y_colunas = ranking_top10[col_valor].max() if not ranking_top10.empty else 100.0
-
-    fig_colunas.update_layout(
-        template="plotly_white",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#000000", size=12, family="Arial"),
-        height=560,
-        margin=dict(l=50, r=40, t=50, b=110),
-        barmode="group",
-        showlegend=True,
-        xaxis=dict(
-            title=dict(text="<b>Cliente (Loja - UF)</b>", font=dict(size=13, color="#000000")),
-            type="category",
-            tickangle=-25,
-            tickfont=dict(size=10, color="#000000"),
-            showgrid=False,
-        ),
-        yaxis=dict(
-            title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
-            showgrid=True,
-            gridcolor="#e9ecef",
-            range=[0, max(max_y_colunas * 1.22, 100.0)],
-        ),
-        legend=dict(
-            orientation="v",
-            y=1.0,
-            x=1.02,
-            xanchor="left",
-            font=dict(size=11, color="#000000"),
-        ),
-    )
-
-    st.plotly_chart(fig_colunas, use_container_width=True)
+    _plot_ranking_clientes_colunas(ranking_top10, col_valor, mes_top10_sel, filial_top10_sel)
 
     # =========================================================================
-    # 2. MAPA DO BRASIL POR UF + RANKING DE FATURAMENTO POR UF
+    # 2. RANKING BOTTOM 10 CLIENTES (MENOR FATURAMENTO > R$ 0,00) POR FILIAL & MÊS
+    # =========================================================================
+    st.markdown("---")
+    st.markdown("#### 📉 Ranking Bottom 10 Clientes — Menor Faturamento Monetário (Diferenciado por Filial, Loja & UF)")
+
+    col_f_bot1, col_f_bot2 = st.columns(2)
+    with col_f_bot1:
+        filial_bot10_sel = st.selectbox(
+            "🏢 Filtrar Clientes por Filial (Menor Faturamento):",
+            options=opcoes_filiais_cli,
+            index=0,
+            key="select_filial_bot10_colunas",
+        )
+    with col_f_bot2:
+        mes_bot10_sel = st.selectbox(
+            "📅 Selecione o Mês (Menor Faturamento):",
+            options=opcoes_meses_cli,
+            index=0,
+            key="select_mes_bot10_colunas",
+        )
+
+    df_bot10_base = _filtrar_por_filial_e_mes(df, filial_bot10_sel, mes_bot10_sel)
+
+    ranking_bot10 = (
+        df_bot10_base.groupby(["Cliente_Loja_UF_Filial", "Filial_Nome", "Cliente", "Loja", "UF"], as_index=False)[col_valor]
+        .sum()
+    )
+    ranking_bot10 = (
+        ranking_bot10[ranking_bot10[col_valor] > 0]
+        .sort_values(col_valor, ascending=True)
+        .head(10)
+        .reset_index(drop=True)
+    )
+
+    _plot_ranking_clientes_colunas(ranking_bot10, col_valor, mes_bot10_sel, filial_bot10_sel)
+
+    # =========================================================================
+    # 3. MAPA DO BRASIL POR UF + RANKING DE FATURAMENTO POR UF (POR FILIAL & MÊS)
     # =========================================================================
     st.markdown("---")
     st.markdown("#### 🗺️ Mapa de Faturamento por Estado (UF) & Ranking Regional")
 
-    if len(meses_ordenados) > 1:
-        opcoes_mes_uf = ["Todos os Meses (Acumulado)"] + meses_ordenados
+    col_uf_f1, col_uf_f2 = st.columns(2)
+    with col_uf_f1:
+        filial_uf_sel = st.selectbox(
+            "🏢 Filtrar Mapa & Ranking por Filial:",
+            options=opcoes_filiais_cli,
+            index=0,
+            key="filtro_filial_uf_mapa",
+        )
+    with col_uf_f2:
         mes_uf_sel = st.selectbox(
             "📅 Filtrar Competência (Mapa & Ranking por UF):",
-            opcoes_mes_uf,
+            options=opcoes_meses_cli,
             index=0,
             key="filtro_mes_uf_mapa",
         )
-        df_uf_base = df[df["Mes_Str"] == mes_uf_sel].copy() if mes_uf_sel != "Todos os Meses (Acumulado)" else df.copy()
-    else:
-        df_uf_base = df.copy()
+
+    df_uf_base = _filtrar_por_filial_e_mes(df, filial_uf_sel, mes_uf_sel)
 
     total_faturado_geral = df_uf_base[col_valor].sum()
 
@@ -185,7 +276,7 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         .agg(
             Valor_Faturado=(col_valor, "sum"),
             Qtd_Clientes=("Cliente", "nunique"),
-            Qtd_Lojas=("Loja", "count"),
+            Filiais_Ativas=("Filial_Cod", lambda x: ", ".join(sorted(set(x)))),
         )
         .sort_values("Valor_Faturado", ascending=False)
         .reset_index(drop=True)
@@ -212,11 +303,13 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
                     "Valor_Faturado": False,
                     "Valor_Faturado_Fmt": True,
                     "Qtd_Clientes": True,
+                    "Filiais_Ativas": True,
                     "Participacao": ":.2f",
                 },
                 labels={
                     "Valor_Faturado_Fmt": "Faturamento",
                     "Qtd_Clientes": "Clientes Ativos",
+                    "Filiais_Ativas": "Filiais",
                     "Participacao": "% do Total",
                     "Valor_Faturado": "Faturamento (R$)",
                 },
@@ -258,9 +351,10 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         df_uf_rank["Participacao_Str"] = df_uf_rank["Participacao"].apply(lambda p: f"{p:.2f}%")
 
         st.dataframe(
-            df_uf_rank[["UF", "Valor_Faturado_Fmt", "Qtd_Clientes", "Participacao_Str"]].rename(
+            df_uf_rank[["UF", "Filiais_Ativas", "Valor_Faturado_Fmt", "Qtd_Clientes", "Participacao_Str"]].rename(
                 columns={
                     "UF": "Estado (UF)",
+                    "Filiais_Ativas": "Filiais",
                     "Valor_Faturado_Fmt": "Faturamento Total (R$)",
                     "Qtd_Clientes": "Qtd. Clientes",
                     "Participacao_Str": "% Share",

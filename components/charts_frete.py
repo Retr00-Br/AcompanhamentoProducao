@@ -31,19 +31,23 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
     df_comp_mensal_full = pd.merge(fat_mensal, frete_mensal, on="Mes_Ano", how="outer").fillna(0.0)
     df_comp_mensal_full = df_comp_mensal_full.sort_values("Mes_Ano").reset_index(drop=True)
 
-    # Filtro mensal dedicado para o Comparativo Mensal
+    # Caixa de seleção no padrão das abas de Faturamento & Produção + Acumulado Geral
     meses_comp_disp = df_comp_mensal_full["Mes_Ano"].tolist()
-    meses_comp_sel = st.multiselect(
-        "📅 Filtrar Meses no Comparativo Mensal:",
-        options=meses_comp_disp,
-        default=meses_comp_disp,
-        key="filtro_meses_comparativo_mensal_frete",
+    opcoes_comp_select = ["Todos os Meses (Acumulado Geral)"] + meses_comp_disp
+    mes_comp_sel = st.selectbox(
+        "📅 Selecione o Mês (Comparativo Mensal):",
+        options=opcoes_comp_select,
+        index=0,
+        key="select_mes_comparativo_mensal_frete",
     )
 
-    df_comp_mensal = df_comp_mensal_full[df_comp_mensal_full["Mes_Ano"].isin(meses_comp_sel)].copy().reset_index(drop=True)
+    if mes_comp_sel == "Todos os Meses (Acumulado Geral)":
+        df_comp_mensal = df_comp_mensal_full.copy().reset_index(drop=True)
+    else:
+        df_comp_mensal = df_comp_mensal_full[df_comp_mensal_full["Mes_Ano"] == mes_comp_sel].copy().reset_index(drop=True)
 
     if df_comp_mensal.empty:
-        st.warning("Selecione ao menos um mês para exibir o Comparativo Mensal.")
+        st.warning("Sem dados disponíveis para o mês selecionado.")
     else:
         df_comp_mensal["Pct_Frete"] = (df_comp_mensal["Frete"] / df_comp_mensal["Faturamento"].replace(0, pd.NA)) * 100
         df_comp_mensal["Pct_Frete"] = df_comp_mensal["Pct_Frete"].fillna(0.0)
@@ -399,19 +403,33 @@ def render_secao_frete(df_diario: pd.DataFrame, col_fat_ativa: str, df_frete_tra
         total_nf_transp = df_mnop_clean["Valor_NF"].sum()
         total_fr_transp = df_mnop_clean["Valor_Frete"].sum()
         pct_medio_transp = (total_fr_transp / total_nf_transp * 100) if total_nf_transp > 0 else 0.0
-        top_transp_nome = df_mnop_clean.iloc[0]["Transportadora"]
+        top_transp_nome = str(df_mnop_clean.iloc[0]["Transportadora"]).strip()
         top_transp_val = df_mnop_clean.iloc[0]["Valor_Frete"]
+        top_transp_val_fmt = f"R$ {top_transp_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        kt1, kt2, kt3, kt4 = st.columns(4)
+        kt1, kt2, kt3, kt4 = st.columns([1.0, 1.0, 0.85, 1.35])
         kt1.metric("📄 Valor Total NFs (Transportadoras)", f"R$ {total_nf_transp:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         kt2.metric("🚚 Custo Total Frete (Transportadoras)", f"R$ {total_fr_transp:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         kt3.metric("📊 % Médio Frete / Valor NFs", f"{pct_medio_transp:.2f}%")
-        kt4.metric(
-            "🏆 Maior Custo Transportadora",
-            top_transp_nome[:22],
-            delta=f"R$ {top_transp_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-            delta_color="off",
-        )
+        with kt4:
+            st.markdown(
+                f"""
+                <div style="padding: 2px 0;">
+                    <div style="font-size: 0.875rem; color: rgba(49, 51, 63, 0.8); margin-bottom: 4px;">
+                        🏆 Maior Custo Transportadora
+                    </div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: rgb(49, 51, 63); line-height: 1.2; word-break: break-word;">
+                        {top_transp_nome}
+                    </div>
+                    <div style="margin-top: 6px;">
+                        <span style="background-color: rgba(151, 166, 195, 0.15); color: rgb(49, 51, 63); padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;">
+                            ↑ {top_transp_val_fmt}
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         top_n_opcoes = [10, 15, 20, len(df_mnop_clean)]
         top_n_labels = ["Top 10 Transportadoras", "Top 15 Transportadoras", "Top 20 Transportadoras", "Todas as Transportadoras"]

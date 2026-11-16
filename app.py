@@ -16,7 +16,7 @@ from components.tables import render_top10_faturamento, render_tabela_consolidad
 from components.sla_farol import render_secao_sla
 
 st.set_page_config(
-    page_title="Dashboard Operacional & BI",
+    page_title="Dashboard Operacional & BI - Higimed",
     page_icon="📦",
     layout="wide",
 )
@@ -199,7 +199,7 @@ def main():
     tab_fat, tab_prod, tab_frete, tab_sla, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
-        "🚚 Gestão & Custo de Frete",
+        "🚚 Custo de Frete",
         "🚦 Farol SLA & Operação",
         "📜 Base Consolidada",
     ])
@@ -258,7 +258,7 @@ def main():
         render_graficos_producao(df_filtrado_prod, "Todas as Unidades (Geral)_Fat", "Todas as Unidades (Geral)")
 
     # -------------------------------------------------------------------------
-    # ABA 3: GESTÃO & CUSTO DE FRETE
+    # ABA 3: CUSTO DE FRETE
     # -------------------------------------------------------------------------
     with tab_frete:
         render_secao_frete(df_diario, "Todas as Unidades (Geral)_Fat", df_frete_tratado)
