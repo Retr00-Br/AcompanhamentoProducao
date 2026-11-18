@@ -14,6 +14,7 @@ from components.charts_producao import render_graficos_producao
 from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 from components.sla_farol import render_secao_sla
+from components.forecast_ds import render_secao_previsao_ds
 
 st.set_page_config(
     page_title="Dashboard Operacional & BI - Higimed",
@@ -194,18 +195,19 @@ def main():
         st.stop()
 
     # =========================================================================
-    # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS (CADA ABA COM SEUS PRÓPRIOS FILTROS)
+    # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS (INCLUINDO PREVISÃO & DATA SCIENCE)
     # =========================================================================
-    tab_fat, tab_prod, tab_frete, tab_sla, tab_tabela = st.tabs([
+    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
         "🚚 Custo de Frete",
         "🚦 Farol SLA & Operação",
+        "🔮 Previsão & Data Science",
         "📜 Base Consolidada",
     ])
 
     # -------------------------------------------------------------------------
-    # ABA 1: FATURAMENTO & CLIENTES (FILTRO TEMPORAL E FILIAL ISOLADOS)
+    # ABA 1: FATURAMENTO & CLIENTES
     # -------------------------------------------------------------------------
     with tab_fat:
         df_filtrado_fat = _render_filtro_temporal_isolado(
@@ -233,7 +235,7 @@ def main():
         render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
     # -------------------------------------------------------------------------
-    # ABA 2: PRODUÇÃO & EXPEDIÇÃO (FILTRO TEMPORAL ISOLADO A PARTIR DE 07/10)
+    # ABA 2: PRODUÇÃO & EXPEDIÇÃO
     # -------------------------------------------------------------------------
     with tab_prod:
         mask_prod_real = (
@@ -270,7 +272,13 @@ def main():
         render_secao_sla(df_sla)
 
     # -------------------------------------------------------------------------
-    # ABA 5: BASE CONSOLIDADA
+    # ABA 5: PREVISÃO & DATA SCIENCE
+    # -------------------------------------------------------------------------
+    with tab_prev:
+        render_secao_previsao_ds(df_diario, df_frete_tratado)
+
+    # -------------------------------------------------------------------------
+    # ABA 6: BASE CONSOLIDADA
     # -------------------------------------------------------------------------
     with tab_tabela:
         df_base_tab = df_diario.copy()
