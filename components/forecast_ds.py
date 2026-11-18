@@ -41,7 +41,7 @@ def _ajustar_e_prever_serie(
 ) -> dict:
     """
     Ajusta modelos de Data Science (OLS, Ridge Sazonal, Polinomial Amortecido, Holt Linear e Ensemble)
-    retornando histórico ajustado, previsão futura, intervalo de confiança 95% e métricas de erro (RMSE / R2).
+    retornando histórico ajustado, previsão futura, intervalo de confiança 95% e métricas de erro.
     """
     y = np.asarray(valores_hist, dtype=float)
     n = len(y)
@@ -173,45 +173,56 @@ def _plot_serie_previsao(
     cor_hist: str = "#1f77b4",
     cor_prev: str = "#d97706",
     is_moeda: bool = True,
+    janela_hist: int = 35,
 ):
-    # Título renderizado fora do SVG para nunca colidir com a legenda
+    # Título renderizado fora do SVG para nunca sobrepor a legenda
     st.markdown(f"#### {titulo}")
+
+    # Recorta a janela visual do histórico (mantendo todo o histórico no treino do modelo)
+    if janela_hist > 0 and len(datas_hist) > janela_hist:
+        datas_hist_vis = datas_hist[-janela_hist:]
+        valores_hist_vis = valores_hist[-janela_hist:]
+        fit_hist_vis = res_modelo["hist_fit"][-janela_hist:]
+    else:
+        datas_hist_vis = datas_hist
+        valores_hist_vis = valores_hist
+        fit_hist_vis = res_modelo["hist_fit"]
 
     fig = go.Figure()
 
-    # Garante chaves únicas cronológicas (Passado -> Futuro)
-    x_hist_str = datas_hist.strftime("%d/%m/%y").tolist()
+    # Ordem estritamente cronológica: Passado (Esquerda) -> Futuro (Direita)
+    x_hist_str = datas_hist_vis.strftime("%d/%m/%y").tolist()
     x_fut_str = datas_fut.strftime("%d/%m/%y").tolist()
     eixo_x_cronologico = x_hist_str + x_fut_str
 
     fmt_hover = "R$ %{y:,.2f}" if is_moeda else "%{y:,.1f}"
 
-    # 1. Histórico Real (desenhado primeiro, na esquerda)
+    # 1. Histórico Real
     fig.add_trace(
         go.Scatter(
             x=x_hist_str,
-            y=valores_hist,
+            y=valores_hist_vis,
             mode="lines+markers",
             name="Histórico Real",
-            line=dict(color=cor_hist, width=2.2),
-            marker=dict(size=5),
+            line=dict(color=cor_hist, width=2.4),
+            marker=dict(size=6),
             hovertemplate=f"<b>Data: %{{x}}</b><br>Real: {fmt_hover}<extra></extra>",
         )
     )
 
-    # 2. Linha de Tendência Histórica (Ajuste do Modelo)
+    # 2. Linha de Tendência Ajustada
     fig.add_trace(
         go.Scatter(
             x=x_hist_str,
-            y=res_modelo["hist_fit"],
+            y=fit_hist_vis,
             mode="lines",
-            name="Tendência Ajustada",
-            line=dict(color="#6c757d", width=1.8, dash="dot"),
+            name="Tendência (Modelo)",
+            line=dict(color="#64748b", width=1.8, dash="dot"),
             hovertemplate=f"<b>Data: %{{x}}</b><br>Ajuste Modelo: {fmt_hover}<extra></extra>",
         )
     )
 
-    # 3. Banda de Confiança 95% (na direita, somente nas datas futuras)
+    # 3. Intervalo de Confiança 95%
     fig.add_trace(
         go.Scatter(
             x=x_fut_str + x_fut_str[::-1],
@@ -225,12 +236,12 @@ def _plot_serie_previsao(
         )
     )
 
-    # 4. Previsão Futura conectada perfeitamente ao último ponto real (à direita)
+    # 4. Previsão Futura conectada ao último ponto real (sem voltar para trás!)
     x_conn = [x_hist_str[-1]] + x_fut_str
-    y_conn = [float(valores_hist[-1])] + list(res_modelo["forecast"])
+    y_conn = [float(valores_hist_vis[-1])] + list(res_modelo["forecast"])
 
     n_fut = len(x_fut_str)
-    indices_rotulo = {0, n_fut // 2, n_fut - 1} if n_fut >= 3 else set(range(n_fut))
+    indices_rotulo = {0, n_fut // 2, n_fut - 1} if n_fut >= 4 else set(range(n_fut))
     textos_prev = [""]
     for i, v in enumerate(res_modelo["forecast"]):
         if i in indices_rotulo:
@@ -244,7 +255,7 @@ def _plot_serie_previsao(
             y=y_conn,
             mode="lines+markers+text",
             name="Previsão Futura",
-            line=dict(color=cor_prev, width=2.8, dash="dash"),
+            line=dict(color=cor_prev, width=3.0, dash="dash"),
             marker=dict(size=7, symbol="diamond"),
             text=textos_prev,
             textposition="top center",
@@ -254,16 +265,26 @@ def _plot_serie_previsao(
         )
     )
 
-    # Linha vertical divisória separando o Histórico Real da Previsão Futura
+    # Divisória vertical clara separando Histórico Real vs. Previsão Futura
+    idx_div = len(x_hist_str) - 0.5
     fig.add_vline(
-        x=len(x_hist_str) - 0.5,
-        line_width=1.5,
+        x=idx_div,
+        line_width=1.8,
         line_dash="dash",
-        line_color="#94a3b8",
+        line_color="#475569",
+    )
+    fig.add_annotation(
+        x=idx_div,
+        y=1.02,
+        yref="paper",
+        text="<b>Início Previsão →</b>",
+        showarrow=False,
+        xanchor="left",
+        font=dict(size=10, color="#475569"),
     )
 
     max_y = max(
-        float(np.max(valores_hist)) if len(valores_hist) > 0 else 10.0,
+        float(np.max(valores_hist_vis)) if len(valores_hist_vis) > 0 else 10.0,
         float(np.max(res_modelo["upper_95"])) if len(res_modelo["upper_95"]) > 0 else 10.0,
         10.0,
     )
@@ -273,15 +294,15 @@ def _plot_serie_previsao(
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=11, family="Arial"),
-        height=430,
-        margin=dict(l=45, r=35, t=45, b=65),
+        height=440,
+        margin=dict(l=45, r=35, t=55, b=65),
         hovermode="x unified",
         xaxis=dict(
             type="category",
             categoryorder="array",
             categoryarray=eixo_x_cronologico,
-            tickangle=-40,
-            nticks=18,
+            tickangle=-35,
+            nticks=16,
             tickfont=dict(size=10, color="#000000"),
             showgrid=False,
         ),
@@ -292,11 +313,11 @@ def _plot_serie_previsao(
             ),
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max_y * 1.24],
+            range=[0, max_y * 1.25],
         ),
         legend=dict(
             orientation="h",
-            y=1.14,
+            y=1.15,
             x=0.0,
             xanchor="left",
             font=dict(size=11, color="#000000"),
@@ -306,12 +327,12 @@ def _plot_serie_previsao(
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_guia_explicativo_modelos():
-    """Sub-aba dedicada a explicar cada modelo estatístico / Data Science e suas aplicações práticas."""
-    st.markdown("### 📚 Guia Explicativo dos Modelos de Previsão & Data Science")
+def render_guia_explicativo_modelos():
+    """Página completa explicando cada modelo de Data Science e o que ele muda na análise."""
+    st.markdown("## 📚 Guia dos Modelos de Previsão & Impacto na Análise")
     st.markdown(
-        "Nesta página você encontra o funcionamento, a lógica matemática simplificada e a recomendação de uso "
-        "de cada algoritmo disponível no motor preditivo do **Painel Operacional & BI**."
+        "Cada algoritmo disponível na aba **🔮 Previsão & Data Science** lê o histórico operacional de uma forma diferente. "
+        "Veja abaixo **como cada modelo funciona**, **o que ele muda nos seus KPIs e gráficos** e **quando escolher cada um**."
     )
 
     st.markdown("---")
@@ -319,70 +340,78 @@ def _render_guia_explicativo_modelos():
     modelos_info = [
         {
             "icone": "🧠",
-            "nome": "1. Ensemble Ponderado (Média Inteligente DS) — Recomendado",
-            "badge": "Uso Geral • Alta Estabilidade",
-            "o_que_e": (
-                "Combina simultaneamente os quatro modelos matemáticos (35% Ridge Sazonal + 30% Regressão Linear OLS + "
-                "20% Suavização Exponencial de Holt + 15% Polinomial Amortecido) para gerar uma previsão equilibrada."
+            "nome": "1. Ensemble Ponderado (Média Inteligente DS) — Padrão Recomendado",
+            "badge": "Equilíbrio • Visão Executiva",
+            "como_funciona": (
+                "Combina os 4 modelos matemáticos simultaneamente com pesos calibrados: "
+                "**35% Ridge Sazonal + 30% Regressão Linear (OLS) + 20% Suavização Exponencial (Holt) + 15% Polinomial Amortecido**."
             ),
-            "para_que_serve": (
-                "Reduz o risco de erro individual de cada algoritmo: evita que picos isolados distorçam a projeção e "
-                "preserva tanto a tendência de crescimento quanto o ritmo semanal da operação."
+            "implicacao_analise": (
+                "• **Nos gráficos:** Gera uma curva futura suave, mas que ainda respeita as oscilações naturais entre dias da semana.\n"
+                "• **Nos KPIs:** Evita tanto o excesso de otimismo quanto quedas bruscas causadas por um único dia atípico (ex.: feriado ou dia sem faturamento).\n"
+                "• **Impacto na decisão:** É a projeção mais segura para fechar metas mensais, orçamento de frete e dimensionamento de equipe."
             ),
-            "quando_usar": "Ideal para reuniões gerenciais, planejamento mensal de faturamento, dimensionamento de equipe e orçamento de frete.",
+            "quando_usar": "Reuniões de diretoria, planejamento mensal de faturamento e previsão consolidada de operação.",
         },
         {
             "icone": "📐",
             "nome": "2. Regressão Linear Simples (OLS — Ordinary Least Squares)",
-            "badge": "Tendência Global • Linha Reta",
-            "o_que_e": (
-                "Ajusta uma linha reta (y = a + b·t) que minimiza a soma dos erros quadráticos ao longo de todo o histórico observado, "
-                "identificando a taxa média de crescimento ou queda por dia útil (inclinação b)."
+            "badge": "Tendência Reta • Longo Prazo",
+            "como_funciona": (
+                "Traça uma única linha reta (`y = a + b·t`) atravessando todo o histórico desde o primeiro dia, "
+                "calculando o ganho ou perda média diária (`b`) pelo método dos mínimos quadrados."
             ),
-            "para_que_serve": (
-                "Medir se a operação está ganhando ou perdendo tração estrutural no médio/longo prazo, ignorando ruídos pontuais de um único dia."
+            "implicacao_analise": (
+                "• **Nos gráficos:** A previsão futura aparece como uma linha reta contínua, ignorando se o dia é segunda-feira ou sábado.\n"
+                "• **Nos KPIs:** Dá peso igual aos dados antigos (agosto/setembro) e aos dados recentes (novembro). Se a empresa cresceu muito nos últimos 15 dias, o OLS demora a subir.\n"
+                "• **Impacto na decisão:** Mostra se a operação tem crescimento estrutural sólido no trimestre, filtrando ruídos diários."
             ),
-            "quando_usar": "Excelente para avaliar a velocidade média de expansão do Faturamento Bruto/Líquido e queda estrutural do Backlog.",
+            "quando_usar": "Avaliar tendência estrutural de crescimento de faturamento e queda contínua do backlog ao longo dos meses.",
         },
         {
             "icone": "📅",
             "nome": "3. Regressão Ridge (L2) + Sazonalidade por Dia da Semana",
-            "badge": "Ciclo Semanal • Seg a Sáb",
-            "o_que_e": (
-                "Modelo de regressão regularizada (penalização L2 para evitar overfitting) que combina a tendência temporal com variáveis "
-                "indicadoras (One-Hot Encoding) para cada dia da semana (Segunda, Terça, Quarta, Quinta, Sexta e Sábado)."
+            "badge": "Ciclo Seg–Sáb • Ritmo Operacional",
+            "como_funciona": (
+                "Usa regularização matemática L2 (evita distorções por outliers) combinada com variáveis para cada dia da semana "
+                "(Segunda, Terça, Quarta, Quinta, Sexta e Sábado)."
             ),
-            "para_que_serve": (
-                "Capturar o comportamento cíclico da logística: por exemplo, picos de faturamento e expedição no início/fim da semana "
-                "e volumes reduzidos aos sábados."
+            "implicacao_analise": (
+                "• **Nos gráficos:** A linha laranja futura sobe e desce em 'dentes de serra' realistas — projetando volumes maiores nos dias fortes da semana e menores nos dias fracos.\n"
+                "• **Nos KPIs:** O total da semana ou do mês depende de quantas segundas/sextas ou sábados caem no período projetado.\n"
+                "• **Impacto na decisão:** Essencial para escala de separadores, conferentes e agendamento de coletas das transportadoras por dia da semana."
             ),
-            "quando_usar": "Perfeito para projeções de curto prazo (Próxima Semana ou Próximo Mês) em Notas Realizadas, Expedição e Faturamento Diário.",
+            "quando_usar": "Planejamento semanal/mensal de Notas Realizadas, Expedição Diária e picos de faturamento por dia da semana.",
         },
         {
             "icone": "📈",
             "nome": "4. Regressão Polinomial Grau 2 (Com Amortecimento de Horizonte)",
             "badge": "Aceleração / Desaceleração • Curvatura",
-            "o_que_e": (
-                "Ajusta uma curva parabólica (y = c₂·t² + c₁·t + c₀) com fator de amortecimento exponencial (0,96ᵗ) no horizonte futuro "
-                "para captar mudanças de ritmo sem gerar explosões irreais."
+            "como_funciona": (
+                "Ajusta uma parábola (`y = c₂·t² + c₁·t + c₀`) com amortecimento exponencial no futuro (`0,96ᵗ`) "
+                "para detectar se o ritmo está acelerando ou perdendo força."
             ),
-            "para_que_serve": (
-                "Identificar quando uma série está acelerando (ex.: ganho recente de produtividade na separação) ou desacelerando."
+            "implicacao_analise": (
+                "• **Nos gráficos:** A curva futura faz uma leve curvatura para cima (aceleração) ou para baixo (desaceleração) em vez de seguir reta.\n"
+                "• **Nos KPIs:** Se os últimos meses aceleraram o faturamento, este modelo projeta valores mais altos que o OLS; se houve desaceleração recente, projeta valores mais conservadores.\n"
+                "• **Impacto na decisão:** Ajuda a identificar pontos de virada (inflexão) após mudanças de processo ou entrada de novos clientes."
             ),
-            "quando_usar": "Útil quando houve mudança recente de patamar operacional ou implantação de novos processos no galpão.",
+            "quando_usar": "Analisar mudança de velocidade operacional (ganho de eficiência na expedição ou desaceleração de pedidos).",
         },
         {
             "icone": "⚡",
             "nome": "5. Suavização Exponencial Dupla (Holt's Linear Trend)",
-            "badge": "Peso Maior no Passado Recente • Reativo",
-            "o_que_e": (
-                "Algoritmo clássico de séries temporais que decompõe a série em Nível (Level) e Tendência Amortecida (Damped Trend), "
-                "atribuindo peso exponencialmente maior aos dias mais recentes do que aos meses antigos."
+            "badge": "Memória Curta • Reativo ao Momento Atual",
+            "como_funciona": (
+                "Atribui peso exponencialmente maior aos últimos dias realizados e peso menor aos meses passados, "
+                "atualizando continuamente o nível atual e a tendência recente."
             ),
-            "para_que_serve": (
-                "Reagir rapidamente ao momento atual da operação quando as últimas semanas representam melhor a realidade do que o início do histórico."
+            "implicacao_analise": (
+                "• **Nos gráficos:** A previsão parte exatamente do patamar mais recente da operação, sem ficar presa à média antiga.\n"
+                "• **Nos KPIs:** É o modelo mais sensível a mudanças recentes — se o custo de frete ou o backlog caiu drasticamente na última semana, os KPIs futuros refletem isso imediatamente.\n"
+                "• **Impacto na decisão:** Ideal para alertas rápidos de curto prazo (próximos 7 dias), mas pode oscilar mais se a última semana teve feriado."
             ),
-            "quando_usar": "Indicado para acompanhar Custo de Frete recente, Backlog atual e ritmo imediato de Expedição.",
+            "quando_usar": "Monitoramento tático de curto prazo (Próxima Semana) para Backlog, Custo de Frete recente e ritmo imediato de saída.",
         },
     ]
 
@@ -398,48 +427,48 @@ def _render_guia_explicativo_modelos():
                     f"{m['badge']}</span></div>",
                     unsafe_allow_html=True,
                 )
-            st.markdown(f"**Como funciona:** {m['o_que_e']}")
-            st.markdown(f"**Para que serve:** {m['para_que_serve']}")
-            st.markdown(f"**Quando escolher no BI:** {m['quando_usar']}")
+            st.markdown(f"**Como funciona:** {m['como_funciona']}")
+            st.markdown(f"**O que implica de diferente na análise:**\n{m['implicacao_analise']}")
+            st.markdown(f"**Melhor aplicação no BI:** {m['quando_usar']}")
 
     st.markdown("---")
-    st.markdown("#### 📊 Resumo Comparativo Rápido")
+    st.markdown("### 📊 Quadro Comparativo: O que muda ao trocar de modelo?")
     df_resumo_modelos = pd.DataFrame(
         [
             {
                 "Modelo": "Ensemble Ponderado (Média DS)",
-                "Sensibilidade a Ruídos": "Baixa (Equilibrado)",
-                "Captura Dia da Semana": "Sim (35%)",
-                "Melhor Horizonte": "Semana, Mês e Trimestre",
-                "Indicação Principal": "Visão Executiva & Planejamento Geral",
+                "Formato da Curva Futura": "Suave + Ciclo Semanal Moderado",
+                "Peso nos Dados Recentes": "Equilibrado",
+                "Reação a Outliers (Picos)": "Baixa (Protegido)",
+                "Impacto Principal nos KPIs": "Projeção mais estável e confiável para metas",
             },
             {
                 "Modelo": "Regressão Linear (OLS)",
-                "Sensibilidade a Ruídos": "Muito Baixa",
-                "Captura Dia da Semana": "Não",
-                "Melhor Horizonte": "Mês e Trimestre",
-                "Indicação Principal": "Tendência Estrutural de Longo Prazo",
+                "Formato da Curva Futura": "Linha Reta Contínua",
+                "Peso nos Dados Recentes": "Igual a todo histórico",
+                "Reação a Outliers (Picos)": "Muito Baixa",
+                "Impacto Principal nos KPIs": "Mostra a tendência média estrutural de longo prazo",
             },
             {
                 "Modelo": "Ridge + Sazonalidade Semanal",
-                "Sensibilidade a Ruídos": "Baixa",
-                "Captura Dia da Semana": "Sim (100%)",
-                "Melhor Horizonte": "Semana e Mês",
-                "Indicação Principal": "Escala Operacional & Picos Seg–Sáb",
+                "Formato da Curva Futura": "Ondulada (Ciclo Seg–Sáb)",
+                "Peso nos Dados Recentes": "Moderado",
+                "Reação a Outliers (Picos)": "Baixa (Regularizado L2)",
+                "Impacto Principal nos KPIs": "Diferencia dias fortes e fracos da semana",
             },
             {
                 "Modelo": "Polinomial Grau 2 (Amortecido)",
-                "Sensibilidade a Ruídos": "Moderada",
-                "Captura Dia da Semana": "Não",
-                "Melhor Horizonte": "Semana e Mês",
-                "Indicação Principal": "Detecção de Aceleração / Inflexão",
+                "Formato da Curva Futura": "Curva Suave (Parábola Amortecida)",
+                "Peso nos Dados Recentes": "Moderado/Alto",
+                "Reação a Outliers (Picos)": "Moderada",
+                "Impacto Principal nos KPIs": "Capta aceleração ou desaceleração do ritmo",
             },
             {
                 "Modelo": "Suavização Exponencial (Holt)",
-                "Sensibilidade a Ruídos": "Alta (Reativo)",
-                "Captura Dia da Semana": "Não",
-                "Melhor Horizonte": "Próxima Semana (7 dias)",
-                "Indicação Principal": "Comportamento Recente / Curto Prazo",
+                "Formato da Curva Futura": "Reta/Amortecida partindo do último nível",
+                "Peso nos Dados Recentes": "Muito Alto (Memória Curta)",
+                "Reação a Outliers (Picos)": "Alta",
+                "Impacto Principal nos KPIs": "Reflete imediatamente o comportamento da última semana",
             },
         ]
     )
@@ -451,11 +480,11 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
 
     subtab_painel, subtab_guia = st.tabs([
         "📊 Painel Preditivo (KPIs, Gráficos & Cronograma)",
-        "📚 Guia dos Modelos de Previsão (Para que serve cada modelo)",
+        "📚 Explicação dos Modelos & Impacto na Análise",
     ])
 
     with subtab_guia:
-        _render_guia_explicativo_modelos()
+        render_guia_explicativo_modelos()
 
     with subtab_painel:
         if df_diario is None or df_diario.empty:
@@ -470,7 +499,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
         # =====================================================================
         # CONTROLES DO MODELO DE DATA SCIENCE
         # =====================================================================
-        col_c1, col_c2, col_c3 = st.columns([1.3, 1.3, 1.4])
+        col_c1, col_c2, col_c3, col_c4 = st.columns([1.2, 1.2, 1.3, 1.0])
 
         with col_c1:
             horizonte_label = st.selectbox(
@@ -516,6 +545,18 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                 index=0,
                 key="ds_modelo_sel",
             )
+
+        with col_c4:
+            janela_label = st.selectbox(
+                "👁️ Zoom Histórico Gráfico:",
+                [
+                    "Últimos 30 dias + Previsão",
+                    "Todo Histórico + Previsão",
+                ],
+                index=0,
+                key="ds_janela_vis_sel",
+            )
+        janela_hist_dias = 30 if "30" in janela_label else 0
 
         # =====================================================================
         # PREPARAÇÃO DAS SÉRIES HISTÓRICAS POR DOMÍNIO
@@ -748,6 +789,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
             cor_hist="#1f77b4",
             cor_prev="#d97706",
             is_moeda=True,
+            janela_hist=janela_hist_dias,
         )
 
         with st.expander("🔬 Comparativo Técnico entre Modelos de Regressão (Média Diária & Total Projetado)", expanded=True):
@@ -787,6 +829,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                 cor_hist="#1f77b4",
                 cor_prev="#16a34a",
                 is_moeda=False,
+                janela_hist=janela_hist_dias,
             )
 
         with col_g2:
@@ -799,6 +842,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                 cor_hist="#0284c7",
                 cor_prev="#ea580c",
                 is_moeda=False,
+                janela_hist=janela_hist_dias,
             )
 
         col_g3, col_g4 = st.columns(2)
@@ -813,6 +857,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                 cor_hist="#dc2626",
                 cor_prev="#991b1b",
                 is_moeda=False,
+                janela_hist=janela_hist_dias,
             )
 
         with col_g4:
@@ -825,6 +870,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                 cor_hist="#7c3aed",
                 cor_prev="#d97706",
                 is_moeda=True,
+                janela_hist=janela_hist_dias,
             )
 
         # =====================================================================

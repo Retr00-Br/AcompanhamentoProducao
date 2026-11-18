@@ -14,7 +14,7 @@ from components.charts_producao import render_graficos_producao
 from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 from components.sla_farol import render_secao_sla
-from components.forecast_ds import render_secao_previsao_ds
+from components.forecast_ds import render_secao_previsao_ds, render_guia_explicativo_modelos
 
 st.set_page_config(
     page_title="Dashboard Operacional & BI - Higimed",
@@ -195,20 +195,18 @@ def main():
         st.stop()
 
     # =========================================================================
-    # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS (INCLUINDO PREVISÃO & DATA SCIENCE)
+    # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS
     # =========================================================================
-    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_tabela = st.tabs([
+    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_guia_ds, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
         "🚚 Custo de Frete",
         "🚦 Farol SLA & Operação",
         "🔮 Previsão & Data Science",
+        "📚 Modelos & Impacto Analítico",
         "📜 Base Consolidada",
     ])
 
-    # -------------------------------------------------------------------------
-    # ABA 1: FATURAMENTO & CLIENTES
-    # -------------------------------------------------------------------------
     with tab_fat:
         df_filtrado_fat = _render_filtro_temporal_isolado(
             df_diario,
@@ -234,9 +232,6 @@ def main():
         render_secao_faturamento(df_filtrado_fat, unidade_selecionada)
         render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
-    # -------------------------------------------------------------------------
-    # ABA 2: PRODUÇÃO & EXPEDIÇÃO
-    # -------------------------------------------------------------------------
     with tab_prod:
         mask_prod_real = (
             (df_diario.get("Notas_Realizadas", 0) > 0)
@@ -259,27 +254,18 @@ def main():
         render_kpis_medias(df_filtrado_prod, "Todas as Unidades (Geral)")
         render_graficos_producao(df_filtrado_prod, "Todas as Unidades (Geral)_Fat", "Todas as Unidades (Geral)")
 
-    # -------------------------------------------------------------------------
-    # ABA 3: CUSTO DE FRETE
-    # -------------------------------------------------------------------------
     with tab_frete:
         render_secao_frete(df_diario, "Todas as Unidades (Geral)_Fat", df_frete_tratado)
 
-    # -------------------------------------------------------------------------
-    # ABA 4: FAROL SLA & OPERAÇÃO
-    # -------------------------------------------------------------------------
     with tab_sla:
         render_secao_sla(df_sla)
 
-    # -------------------------------------------------------------------------
-    # ABA 5: PREVISÃO & DATA SCIENCE
-    # -------------------------------------------------------------------------
     with tab_prev:
         render_secao_previsao_ds(df_diario, df_frete_tratado)
 
-    # -------------------------------------------------------------------------
-    # ABA 6: BASE CONSOLIDADA
-    # -------------------------------------------------------------------------
+    with tab_guia_ds:
+        render_guia_explicativo_modelos()
+
     with tab_tabela:
         df_base_tab = df_diario.copy()
         df_base_tab["Data_Str"] = df_base_tab["DATA"].dt.strftime("%d/%m")
