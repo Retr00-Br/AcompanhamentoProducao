@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 
@@ -179,79 +180,133 @@ def _plot_somente_previsao_multi(
     datas_fut: pd.DatetimeIndex,
     series_dict: list,
     is_moeda: bool = True,
-    altura: int = 410,
+    altura: int = 440,
+    modo_rotulos: str = "Automático (Anti-Sobreposição)",
 ):
     """
-    Plota EXCLUSIVAMENTE os dias projetados (desconsiderando o histórico passado),
-    permitindo acompanhar dia a dia por intervalo específico com leitura limpa.
+    Plota EXCLUSIVAMENTE os dias projetados, com sistema anti-sobreposição de rótulos:
+    - Barras exibem valores DENTRO do topo da barra (branco em negrito), liberando a área externa.
+    - Linhas principais exibem valores ACIMA dos marcadores (top center).
+    - Séries secundárias de menor escala (ex.: Devoluções, Backlog) usam eixo secundário (yaxis2)
+      quando solicitado para nunca ficarem achatadas na base.
     """
     st.markdown(f"#### {titulo}")
-    fig = go.Figure()
+
+    usa_eixo2 = any(s.get("eixo_secundario", False) for s in series_dict)
+    fig = make_subplots(specs=[[{"secondary_y": usa_eixo2}]])
 
     dias_sem = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
     x_labels = [f"{d.strftime('%d/%m')} ({dias_sem[d.weekday()]})" for d in datas_fut]
     fmt_hover = "R$ %{y:,.2f}" if is_moeda else "%{y:,.1f}"
 
-    max_y = 10.0
     n_pts = len(x_labels)
-    passo_rotulo = max(n_pts // 10, 1)
+    tem_barra = any(s.get("tipo", "linha") == "barra" for s in series_dict)
+    qtd_linhas = sum(1 for s in series_dict if s.get("tipo", "linha") != "barra")
 
+    max_y1 = 10.0
+    max_y2 = 10.0
+
+    idx_linha_atual = 0
     for s in series_dict:
         vals = np.asarray(s["valores"], dtype=float)
+        is_sec = s.get("eixo_secundario", False)
         if len(vals) > 0:
-            max_y = max(max_y, float(np.max(vals)))
+            if is_sec:
+                max_y2 = max(max_y2, float(np.max(vals)))
+            else:
+                max_y1 = max(max_y1, float(np.max(vals)))
+
+        # Decide exibição de rótulos conforme tamanho do horizonte (6 dias vs 22 dias)
+        if modo_rotulos == "Apenas Hover (Limpo)":
+            mostrar_texto = [False] * n_pts
+        elif modo_rotulos == "Mostrar Todos":
+            mostrar_texto = [True] * n_pts
+        else:
+            # Automático: em 6 dias mostra todos; em 22 dias alterna para não encavalar horizontalmente
+            if n_pts <= 8:
+                mostrar_texto = [True] * n_pts
+            elif n_pts <= 14:
+                mostrar_texto = [(i % 2 == 0 or i == n_pts - 1) for i in range(n_pts)]
+            else:
+                mostrar_texto = [(i % 3 == 0 or i == n_pts - 1) for i in range(n_pts)]
 
         textos = [
-            (_fmt_brl_compacto(v) if is_moeda else _fmt_int(v)) if (i % passo_rotulo == 0 or i == n_pts - 1) else ""
+            (_fmt_brl_compacto(v) if is_moeda else _fmt_int(v)) if mostrar_texto[i] else ""
             for i, v in enumerate(vals)
         ]
 
         if s.get("tipo", "linha") == "barra":
+            # Barra com rótulo DENTRO da barra (evita 100% colisão com linha próxima ao topo)
+            pos_barra = "inside" if qtd_linhas > 0 else "outside"
+            cor_txt_barra = "#ffffff" if pos_barra == "inside" else "#000000"
+
             fig.add_trace(
                 go.Bar(
                     x=x_labels,
                     y=vals,
                     name=s["nome"],
                     marker_color=s["cor"],
-                    opacity=0.88,
+                    opacity=0.86,
                     text=textos,
-                    textposition="outside",
-                    textfont=dict(size=10, color="#000000", family="Arial Black"),
+                    textposition=pos_barra,
+                    insidetextanchor="end",
+                    textfont=dict(size=10, color=cor_txt_barra, family="Arial Black"),
                     cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>{s['nome']}: {fmt_hover}<extra></extra>",
-                )
+                ),
+                secondary_y=is_sec,
             )
         else:
+            # Alterna posição entre top center e bottom center se houver múltiplas linhas
+            if is_sec:
+                pos_linha = "top center"
+            elif idx_linha_atual == 0:
+                pos_linha = "top center"
+            else:
+                pos_linha = "bottom center"
+            idx_linha_atual += 1
+
+            # Em horizontes longos (22 dias) com mais de 1 linha, exibe texto apenas na linha principal
+            if modo_rotulos == "Automático (Anti-Sobreposição)" and n_pts > 10 and is_sec:
+                textos_linha = [""] * n_pts
+                modo_scatter = "lines+markers"
+            else:
+                textos_linha = textos
+                modo_scatter = "lines+markers+text" if any(textos_linha) else "lines+markers"
+
             fig.add_trace(
                 go.Scatter(
                     x=x_labels,
                     y=vals,
-                    mode="lines+markers+text",
+                    mode=modo_scatter,
                     name=s["nome"],
                     line=dict(color=s["cor"], width=3.0, dash=s.get("dash", "solid")),
-                    marker=dict(size=8, symbol=s.get("symbol", "circle")),
-                    text=textos,
-                    textposition="top center",
+                    marker=dict(size=7 if n_pts <= 12 else 5, symbol=s.get("symbol", "circle")),
+                    text=textos_linha,
+                    textposition=pos_linha,
                     textfont=dict(size=10, color=s["cor"], family="Arial Black"),
                     cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>{s['nome']}: {fmt_hover}<extra></extra>",
-                )
+                ),
+                secondary_y=is_sec,
             )
 
         if "upper_95" in s and "lower_95" in s:
             up = np.asarray(s["upper_95"], dtype=float)
             lo = np.asarray(s["lower_95"], dtype=float)
-            max_y = max(max_y, float(np.max(up)) if len(up) > 0 else 10.0)
+            if len(up) > 0:
+                max_y1 = max(max_y1, float(np.max(up)))
             fig.add_trace(
                 go.Scatter(
                     x=x_labels + x_labels[::-1],
                     y=list(up) + list(lo[::-1]),
                     fill="toself",
-                    fillcolor="rgba(217, 119, 6, 0.12)",
+                    fillcolor="rgba(217, 119, 6, 0.11)",
                     line=dict(color="rgba(255,255,255,0)"),
                     hoverinfo="skip",
                     name="Intervalo Confiança 95%",
-                )
+                ),
+                secondary_y=False,
             )
 
     fig.update_layout(
@@ -261,7 +316,7 @@ def _plot_somente_previsao_multi(
         font=dict(color="#000000", size=11, family="Arial"),
         height=altura,
         barmode="group",
-        margin=dict(l=45, r=35, t=45, b=70),
+        margin=dict(l=45, r=45 if usa_eixo2 else 30, t=55, b=75),
         hovermode="x unified",
         xaxis=dict(
             type="category",
@@ -271,17 +326,25 @@ def _plot_somente_previsao_multi(
             tickfont=dict(size=10, color="#000000"),
             showgrid=False,
         ),
-        yaxis=dict(
-            title=dict(
-                text="<b>Valor Projetado (R$)</b>" if is_moeda else "<b>Volume Projetado</b>",
-                font=dict(size=12, color="#000000"),
-            ),
-            showgrid=True,
-            gridcolor="#e9ecef",
-            range=[0, max_y * 1.26],
-        ),
-        legend=dict(orientation="h", y=1.15, x=0.0, xanchor="left", font=dict(size=11, color="#000000")),
+        legend=dict(orientation="h", y=1.16, x=0.0, xanchor="left", font=dict(size=11, color="#000000")),
     )
+
+    fig.update_yaxes(
+        title_text="<b>Valor Projetado (R$)</b>" if is_moeda else "<b>Volume Projetado</b>",
+        showgrid=True,
+        gridcolor="#e9ecef",
+        range=[0, max_y1 * 1.28],
+        secondary_y=False,
+    )
+
+    if usa_eixo2:
+        fig.update_yaxes(
+            title_text="<b>Devoluções (R$)</b>" if is_moeda else "<b>Backlog (Qtd)</b>",
+            showgrid=False,
+            range=[0, max_y2 * 2.2],
+            secondary_y=True,
+        )
+
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -367,7 +430,6 @@ def render_guia_explicativo_modelos():
 def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataFrame = None):
     st.markdown("## 🔮 Previsão & Data Science — Projeções Estatísticas e Regressão")
 
-    # Somente 2 sub-abas integradas para poupar espaço
     subtab_proj, subtab_modelos = st.tabs([
         "📊 Projeções Futuras (KPIs & Gráficos)",
         "📚 Modelos & Impacto Analítico",
@@ -389,9 +451,9 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
         ultima_data_base = df["DATA"].max()
 
         # =====================================================================
-        # CONTROLES DE INTERVALO DA PROJEÇÃO, BENCHMARK & MODELO
+        # CONTROLES DE INTERVALO, BENCHMARK, MODELO E LEITURA DE RÓTULOS
         # =====================================================================
-        col_c1, col_c2, col_c3 = st.columns([1.35, 1.25, 1.4])
+        col_c1, col_c2, col_c3, col_c4 = st.columns([1.25, 1.15, 1.3, 1.15])
 
         with col_c1:
             modo_periodo = st.selectbox(
@@ -401,7 +463,7 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                     "Próximo Mês (22 dias úteis)",
                     "Intervalo de Calendário Específico",
                 ],
-                index=1,
+                index=0,
                 key="ds_modo_periodo_sel",
             )
 
@@ -429,6 +491,18 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                 ],
                 index=0,
                 key="ds_modelo_sel",
+            )
+
+        with col_c4:
+            modo_rotulos = st.selectbox(
+                "🏷️ Rótulos nos Gráficos:",
+                [
+                    "Automático (Anti-Sobreposição)",
+                    "Mostrar Todos",
+                    "Apenas Hover (Limpo)",
+                ],
+                index=0,
+                key="ds_modo_rotulos_sel",
             )
 
         if modo_periodo == "Intervalo de Calendário Específico":
@@ -602,8 +676,8 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
             delta_color="inverse",
         )
 
-        col_fin1, col_fin2 = st.columns([1.4, 1.0])
-        with col_fin1:
+        # Em 22 dias úteis, exibe em largura total (1 coluna por gráfico) para máxima legibilidade
+        if n_dias_prev > 10:
             _plot_somente_previsao_multi(
                 f"📈 Previsão Diária: Faturamento Bruto, Líquido & Devoluções ({modelo_sel})",
                 datas_alvo,
@@ -617,13 +691,19 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                         "upper_95": prev_fat_liq["upper_95"],
                         "lower_95": prev_fat_liq["lower_95"],
                     },
-                    {"nome": "Devoluções", "valores": prev_dev["forecast"], "cor": "#dc2626", "tipo": "linha", "dash": "dot"},
+                    {
+                        "nome": "Devoluções (Eixo Dir.)",
+                        "valores": prev_dev["forecast"],
+                        "cor": "#dc2626",
+                        "tipo": "linha",
+                        "dash": "dot",
+                        "eixo_secundario": True,
+                    },
                 ],
                 is_moeda=True,
-                altura=410,
+                altura=450,
+                modo_rotulos=modo_rotulos,
             )
-
-        with col_fin2:
             _plot_somente_previsao_multi(
                 f"💸 Previsão Diária: Custo de Frete Terceirizado ({modelo_sel})",
                 datas_alvo,
@@ -631,8 +711,50 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                     {"nome": "Custo Frete Previsto", "valores": prev_frete["forecast"], "cor": "#7c3aed", "tipo": "barra"},
                 ],
                 is_moeda=True,
-                altura=410,
+                altura=380,
+                modo_rotulos=modo_rotulos,
             )
+        else:
+            col_fin1, col_fin2 = st.columns([1.4, 1.0])
+            with col_fin1:
+                _plot_somente_previsao_multi(
+                    f"📈 Previsão Diária: Faturamento Bruto, Líquido & Devoluções ({modelo_sel})",
+                    datas_alvo,
+                    [
+                        {"nome": "Faturamento Bruto", "valores": prev_fat_bruto_vals, "cor": "#1f77b4", "tipo": "barra"},
+                        {
+                            "nome": "Faturamento Líquido",
+                            "valores": prev_fat_liq["forecast"],
+                            "cor": "#16a34a",
+                            "tipo": "linha",
+                            "upper_95": prev_fat_liq["upper_95"],
+                            "lower_95": prev_fat_liq["lower_95"],
+                        },
+                        {
+                            "nome": "Devoluções (Eixo Dir.)",
+                            "valores": prev_dev["forecast"],
+                            "cor": "#dc2626",
+                            "tipo": "linha",
+                            "dash": "dot",
+                            "eixo_secundario": True,
+                        },
+                    ],
+                    is_moeda=True,
+                    altura=440,
+                    modo_rotulos=modo_rotulos,
+                )
+
+            with col_fin2:
+                _plot_somente_previsao_multi(
+                    f"💸 Previsão Diária: Custo de Frete Terceirizado ({modelo_sel})",
+                    datas_alvo,
+                    [
+                        {"nome": "Custo Frete Previsto", "valores": prev_frete["forecast"], "cor": "#7c3aed", "tipo": "barra"},
+                    ],
+                    is_moeda=True,
+                    altura=440,
+                    modo_rotulos=modo_rotulos,
+                )
 
         # =====================================================================
         # BLOCO 2 — KPIs OPERACIONAIS + GRÁFICOS OPERACIONAIS SEPARADOS
@@ -674,21 +796,26 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
             delta=_delta_pct_str(tot_skus_prev / n_dias_prev, _calc_media_benchmark(df_prod_hist, "Total_SKUs")),
         )
 
-        col_op1, col_op2 = st.columns(2)
-        with col_op1:
+        if n_dias_prev > 10:
             _plot_somente_previsao_multi(
                 f"📦 Previsão Diária: Notas Realizadas, Saudáveis & Backlog ({modelo_sel})",
                 datas_alvo,
                 [
                     {"nome": "Notas Realizadas", "valores": prev_notas["forecast"], "cor": "#1f77b4", "tipo": "barra"},
                     {"nome": "Notas Saudáveis", "valores": prev_saudavel["forecast"], "cor": "#16a34a", "tipo": "linha"},
-                    {"nome": "Backlog", "valores": prev_backlog["forecast"], "cor": "#dc2626", "tipo": "linha", "dash": "dash"},
+                    {
+                        "nome": "Backlog (Eixo Dir.)",
+                        "valores": prev_backlog["forecast"],
+                        "cor": "#dc2626",
+                        "tipo": "linha",
+                        "dash": "dash",
+                        "eixo_secundario": True,
+                    },
                 ],
                 is_moeda=False,
-                altura=410,
+                altura=440,
+                modo_rotulos=modo_rotulos,
             )
-
-        with col_op2:
             _plot_somente_previsao_multi(
                 f"🚚 Previsão Diária: Volume Expedido & SKUs ({modelo_sel})",
                 datas_alvo,
@@ -697,8 +824,44 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
                     {"nome": "SKUs Separados", "valores": prev_skus["forecast"], "cor": "#0284c7", "tipo": "linha"},
                 ],
                 is_moeda=False,
-                altura=410,
+                altura=420,
+                modo_rotulos=modo_rotulos,
             )
+        else:
+            col_op1, col_op2 = st.columns(2)
+            with col_op1:
+                _plot_somente_previsao_multi(
+                    f"📦 Previsão Diária: Notas Realizadas, Saudáveis & Backlog ({modelo_sel})",
+                    datas_alvo,
+                    [
+                        {"nome": "Notas Realizadas", "valores": prev_notas["forecast"], "cor": "#1f77b4", "tipo": "barra"},
+                        {"nome": "Notas Saudáveis", "valores": prev_saudavel["forecast"], "cor": "#16a34a", "tipo": "linha"},
+                        {
+                            "nome": "Backlog (Eixo Dir.)",
+                            "valores": prev_backlog["forecast"],
+                            "cor": "#dc2626",
+                            "tipo": "linha",
+                            "dash": "dash",
+                            "eixo_secundario": True,
+                        },
+                    ],
+                    is_moeda=False,
+                    altura=440,
+                    modo_rotulos=modo_rotulos,
+                )
+
+            with col_op2:
+                _plot_somente_previsao_multi(
+                    f"🚚 Previsão Diária: Volume Expedido & SKUs ({modelo_sel})",
+                    datas_alvo,
+                    [
+                        {"nome": "Volume Expedido", "valores": prev_exp["forecast"], "cor": "#ea580c", "tipo": "barra"},
+                        {"nome": "SKUs Separados", "valores": prev_skus["forecast"], "cor": "#0284c7", "tipo": "linha"},
+                    ],
+                    is_moeda=False,
+                    altura=440,
+                    modo_rotulos=modo_rotulos,
+                )
 
         # =====================================================================
         # TABELA CONSOLIDADA DIÁRIA DAS PREVISÕES
@@ -737,7 +900,7 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
     """
     Aba 'Comparação de Previsão X Real': união entre Previsão e Realizado
     por Semana, Mês ou Calendário Específico, mostrando em quais dias o Real
-    superou a Previsão e vice-versa across all indicators.
+    superou a Previsão e vice-versa sem sobreposição de rótulos.
     """
     st.markdown("## ⚖️ Comparação de Previsão X Real — Aderência & Superação de Metas")
     st.caption(
@@ -920,26 +1083,41 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
     fmt_hover = "R$ %{y:,.2f}" if is_moeda else "%{y:,.1f}"
 
     # =========================================================================
-    # GRÁFICO 1: UNIÃO PREVISÃO X REAL NO PERÍODO SELECIONADO
+    # GRÁFICO 1: UNIÃO PREVISÃO X REAL (ANTI-SOBREPOSIÇÃO: BARRA INSIDE + LINHA TOP)
     # =========================================================================
     st.markdown(f"#### 📊 Gráfico 1 — União Previsão X Real: {indicador_sel}")
     fig_uniao = go.Figure()
 
+    n_pvr = len(x_labels)
+    passo_pvr = 1 if n_pvr <= 12 else 2
+
+    txt_real = [
+        (_fmt_brl_compacto(v) if is_moeda else _fmt_int(v)) if (i % passo_pvr == 0 or i == n_pvr - 1) else ""
+        for i, v in enumerate(real_vals)
+    ]
+    txt_prev = [
+        (_fmt_brl_compacto(v) if is_moeda else _fmt_int(v)) if (i % passo_pvr == 0 or i == n_pvr - 1) else ""
+        for i, v in enumerate(prev_vals)
+    ]
+
+    # Barra com rótulo DENTRO da barra (branco negrito) — nunca colide com a linha de Previsão
     fig_uniao.add_trace(
         go.Bar(
             x=x_labels,
             y=real_vals,
             name="Realizado",
             marker_color="#1f77b4",
-            opacity=0.88,
-            text=[_fmt_brl_compacto(v) if is_moeda else _fmt_int(v) for v in real_vals],
-            textposition="outside",
-            textfont=dict(size=10, color="#1f77b4", family="Arial Black"),
+            opacity=0.86,
+            text=txt_real,
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(size=11, color="#ffffff", family="Arial Black"),
             cliponaxis=False,
             hovertemplate=f"<b>%{{x}}</b><br>Realizado: {fmt_hover}<extra></extra>",
         )
     )
 
+    # Linha de Previsão com rótulo ACIMA do diamante (top center)
     fig_uniao.add_trace(
         go.Scatter(
             x=x_labels,
@@ -948,9 +1126,9 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
             name=f"Previsão ({modelo_pvr})",
             line=dict(color="#d97706", width=3.2, dash="dash"),
             marker=dict(size=9, symbol="diamond"),
-            text=[_fmt_brl_compacto(v) if is_moeda else _fmt_int(v) for v in prev_vals],
+            text=txt_prev,
             textposition="top center",
-            textfont=dict(size=10, color="#d97706", family="Arial Black"),
+            textfont=dict(size=10, color="#b45309", family="Arial Black"),
             cliponaxis=False,
             hovertemplate=f"<b>%{{x}}</b><br>Previsto: {fmt_hover}<extra></extra>",
         )
@@ -962,7 +1140,7 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#000000", size=11, family="Arial"),
-        height=430,
+        height=440,
         margin=dict(l=45, r=35, t=45, b=65),
         hovermode="x unified",
         xaxis=dict(type="category", tickangle=-35, tickfont=dict(size=10, color="#000000")),
@@ -992,7 +1170,12 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
                 x=x_labels,
                 y=diff_vals,
                 marker_color=cores_diff,
-                text=[f"{'+' if d >= 0 else ''}{_fmt_brl_compacto(d) if is_moeda else _fmt_int(d)}" for d in diff_vals],
+                text=[
+                    f"{'+' if d >= 0 else ''}{_fmt_brl_compacto(d) if is_moeda else _fmt_int(d)}"
+                    if (i % passo_pvr == 0 or i == n_pvr - 1)
+                    else ""
+                    for i, d in enumerate(diff_vals)
+                ],
                 textposition="outside",
                 textfont=dict(size=10, color="#000000", family="Arial Black"),
                 cliponaxis=False,
@@ -1013,7 +1196,7 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
                 title=dict(text="<b>Diferença (Real − Previsto)</b>", font=dict(size=12, color="#000000")),
                 showgrid=True,
                 gridcolor="#e9ecef",
-                range=[-max_abs_d * 1.32, max_abs_d * 1.32],
+                range=[-max_abs_d * 1.35, max_abs_d * 1.35],
             ),
         )
         st.plotly_chart(fig_diff, use_container_width=True)
