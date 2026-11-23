@@ -1,3 +1,4 @@
+import re
 import urllib.request
 import json
 import pandas as pd
@@ -12,6 +13,87 @@ FILIAL_LABELS = {
     "103": "0103 - Filial CP",
     "104": "0104 - Filial SBC",
 }
+
+PRENOMES_BR = {
+    "ADRIANA", "ADRIANO", "ALESSANDRA", "ALESSANDRO", "ALEX", "ALEXANDRE", "ALICE", "ALINE",
+    "AMANDA", "ANA", "ANDERSON", "ANDRE", "ANDREIA", "ANDRESSA", "ANGELA", "ANGELICA",
+    "ANTONIO", "APARECIDA", "ARTHUR", "ARTUR", "BARBARA", "BEATRIZ", "BIANCA", "BRENDA",
+    "BRUNA", "BRUNO", "CAIO", "CAMILA", "CARLA", "CARLOS", "CAROLINA", "CAROLINE", "CASSIA",
+    "CASSIO", "CECILIA", "CELIA", "CELSO", "CESAR", "CHRISTIAN", "CINTIA", "CLARA", "CLAUDIA",
+    "CLAUDIO", "CLEBER", "CRISTIAN", "CRISTIANA", "CRISTIANE", "CRISTIANO", "CRISTINA",
+    "DAIANE", "DANIEL", "DANIELA", "DANIELE", "DANILO", "DAVI", "DAVID", "DAYANE", "DEBORA",
+    "DENIS", "DENISE", "DIEGO", "DIOGO", "DOUGLAS", "EDILSON", "EDSON", "EDUARDA", "EDUARDO",
+    "ELAINE", "ELIANA", "ELIANE", "ELISANGELA", "ELIZABETH", "ELLEN", "EMERSON", "EMILY",
+    "ERICA", "ERICK", "ERIK", "ERIKA", "ESTEFANI", "ESTER", "EVANDRO", "EVELYN", "FABIANA",
+    "FABIANO", "FABIO", "FABIOLA", "FABRICIO", "FELIPE", "FERNANDA", "FERNANDO", "FLAVIA",
+    "FLAVIO", "FRANCISCA", "FRANCISCO", "GABRIEL", "GABRIELA", "GABRIELE", "GABRIELLA",
+    "GEOVANA", "GERALDO", "GILBERTO", "GILMAR", "GIOVANA", "GIOVANNA", "GISELE", "GISELLE",
+    "GIULIA", "GLAUCIA", "GRAZIELA", "GRAZIELE", "GUILHERME", "GUSTAVO", "HELENA", "HELIO",
+    "HENRIQUE", "HUGO", "IGOR", "INGRID", "IRENE", "ISABEL", "ISABELA", "ISABELLA", "ISABELLE",
+    "ISADORA", "ITAMAR", "IVAN", "IVONE", "IZABELA", "JACKSON", "JAIME", "JANAINA", "JANDIRA",
+    "JAQUELINE", "JEAN", "JEFERSON", "JEFFERSON", "JENNIFER", "JESSICA", "JOAO", "JOAQUIM",
+    "JOEL", "JONAS", "JONATAN", "JONATHAN", "JORGE", "JOSE", "JOSEFA", "JOSIANE", "JOYCE",
+    "JULIA", "JULIANA", "JULIANO", "JULIO", "JUNIOR", "KAREN", "KARINA", "KARINE", "KATIA",
+    "KELLY", "KELVIN", "KLEBER", "LAIS", "LARA", "LARISSA", "LAURA", "LEANDRO", "LEONARDO",
+    "LETICIA", "LIDIANE", "LILIAN", "LILIANE", "LORENA", "LUAN", "LUANA", "LUCAS", "LUCIANA",
+    "LUCIANO", "LUCIMARA", "LUIS", "LUIZ", "LUIZA", "MAICON", "MANOEL", "MANUELA", "MARCELA",
+    "MARCELO", "MARCIA", "MARCIO", "MARCO", "MARCOS", "MARIA", "MARIANA", "MARIANE", "MARILIA",
+    "MARINA", "MARIO", "MARISA", "MARLENE", "MATEUS", "MATHEUS", "MAURICIO", "MAURO", "MAYARA",
+    "MELISSA", "MICHEL", "MICHELE", "MICHELLE", "MILENA", "MIRELLA", "MIRIAM", "MONICA",
+    "MONIQUE", "MURILO", "NADIA", "NATALIA", "NATAN", "NATHALIA", "NAYARA", "NELSON", "NICOLE",
+    "NILSON", "NILTON", "NOEMI", "ORLANDO", "OSVALDO", "OTAVIO", "PABLO", "PALOMA", "PAMELA",
+    "PAOLA", "PATRICIA", "PATRICK", "PAULA", "PAULO", "PEDRO", "PRISCILA", "RAFAEL", "RAFAELA",
+    "RAIMUNDO", "RAONI", "RAPHAEL", "RAQUEL", "RAUL", "RAYANE", "REGIANE", "REGINA", "REGINALDO",
+    "REINALDO", "RENAN", "RENATA", "RENATO", "RICARDO", "RITA", "ROBERTA", "ROBERTO", "ROBSON",
+    "RODOLFO", "RODRIGO", "ROGERIO", "RONALDO", "ROSANA", "ROSANGELA", "ROSELI", "ROSEMEIRE",
+    "RUBENS", "SABRINA", "SAMANTA", "SAMANTHA", "SAMARA", "SAMUEL", "SANDRA", "SANDRO", "SARA",
+    "SARAH", "SEBASTIAO", "SERGIO", "SHEILA", "SILVANA", "SILVIA", "SILVIO", "SIMONE", "SOLANGE",
+    "SONIA", "STEFANI", "STEFANY", "STEPHANIE", "SUELEN", "SUELI", "TAINARA", "TAIS", "TALITA",
+    "TAMIRES", "TATIANA", "TATIANE", "THAIS", "THALES", "THAYNA", "THIAGO", "TIAGO", "VALDECIR",
+    "VALDIR", "VALERIA", "VANDERLEI", "VANESSA", "VERA", "VERONICA", "VICTOR", "VICTORIA",
+    "VINICIUS", "VITOR", "VITORIA", "VIVIAN", "VIVIANE", "WAGNER", "WALLACE", "WALTER",
+    "WANDERSON", "WELLINGTON", "WESLEY", "WILLIAM", "WILLIAN", "WILSON", "YAGO", "YASMIN", "YURI",
+}
+
+TERMOS_PJ_EXCLUSAO = {
+    "LTDA", "S/A", "S.A", "EIRELI", "MEI", "EPP", "COMERCIO", "COMERCIAL", "SERVICOS", "SERVICO",
+    "HOSPITAL", "HOSP", "CLINICA", "UNIMED", "HAPVIDA", "DASA", "LABORATORIO", "LAB", "INSTITUTO",
+    "FUNDACAO", "ASSOCIACAO", "CONDOMINIO", "COND", "GRUPO", "INDUSTRIA", "DISTRIBUIDORA",
+    "LOGISTICA", "TRANSPORTES", "FARMACIA", "DROGARIA", "CENTRO", "UNIDADE", "MUNICIPIO",
+    "PREFEITURA", "SECRETARIA", "EMPRESA", "CIA", "SOCIEDADE", "COOPERATIVA", "SAUDE", "ODONTO",
+    "ENGENHARIA", "CONSTRUTORA", "IMOBILIARIA", "HOTEL", "ESCOLA", "COLEGIO", "FACULDADE",
+    "UNIVERSIDADE", "IGREJA", "SUPERMERCADO", "MERCADO", "RESTAURANTE", "FERRAMENTAS",
+    "MATERIAIS", "LIMPEZA", "HIGIENE", "DESCARTAVEIS", "EMBALAGENS", "CONSULTORIA", "ADVOCACIA",
+    "CONTABILIDADE", "ASSESSORIA", "BANCO", "HOLDING", "SANTA", "STA", "CASA", "BENEFICENTE",
+    "DIAG", "DIAGNOSTICO", "CORACAO", "MATERNAL", "SHOW", "REG", "ESTETICA", "SPA", "CLUBE",
+    "AUTO", "PECAS", "TECH", "SOFT", "INFO", "DATA", "WEB", "DIGITAL", "BRASIL", "NACIONAL",
+    "LOJA", "LOJAS", "SHOPPING", "CENTER", "OFFICE", "BUSINESS", "MASTER", "PLUS", "PRO",
+}
+
+EMPRESAS_HOMONIMAS_PF = {
+    "SERGIO FRANCO", "MARIO COVAS", "OSWALDO CRUZ", "ALBERT EINSTEIN", "SIRIO LIBANES",
+    "ALBERTO TORRES", "GETULIO VARGAS", "ANTONIO PRUDENTE", "CRUZ AZUL", "SANTA CASA",
+    "SAO CAMILO", "SAO LUIZ", "SAO LUCAS", "SAO VICENTE",
+}
+
+
+def _eh_pessoa_fisica_funcionario(nome: str) -> bool:
+    """Identifica nomes de pessoas físicas/funcionários para evitar distorção no Bottom 10."""
+    s = str(nome or "").strip().upper()
+    if not s or s in ["NAN", "NONE", "-", "NÃO INFORMADO"]:
+        return True
+    if any(emp in s for emp in EMPRESAS_HOMONIMAS_PF):
+        return False
+    if any(ch.isdigit() for ch in s) or any(sym in s for sym in ["&", "/", "."]):
+        return False
+    palavras = re.findall(r"[A-ZÀ-Ú]+", s)
+    if not palavras or len(palavras) > 4:
+        return False
+    if any(p in TERMOS_PJ_EXCLUSAO for p in palavras):
+        return False
+    if palavras[0] in PRENOMES_BR:
+        return True
+    return False
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -213,7 +295,7 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
     st.markdown("---")
     st.markdown("#### 📉 Ranking Bottom 10 Clientes — Menor Faturamento Monetário (Diferenciado por Filial, Loja & UF)")
 
-    col_f_bot1, col_f_bot2 = st.columns(2)
+    col_f_bot1, col_f_bot2, col_f_bot3 = st.columns([1.4, 1.4, 1.2])
     with col_f_bot1:
         filial_bot10_sel = st.selectbox(
             "🏢 Filtrar Clientes por Filial (Menor Faturamento):",
@@ -228,8 +310,18 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
             index=0,
             key="select_mes_bot10_colunas",
         )
+    with col_f_bot3:
+        st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+        ignorar_pf_bot10 = st.checkbox(
+            "🚫 Ocultar Nomes de Pessoas / Funcionários",
+            value=True,
+            key="chk_ignorar_pf_bot10",
+        )
 
     df_bot10_base = _filtrar_por_filial_e_mes(df, filial_bot10_sel, mes_bot10_sel)
+
+    if ignorar_pf_bot10 and "Cliente" in df_bot10_base.columns:
+        df_bot10_base = df_bot10_base[~df_bot10_base["Cliente"].apply(_eh_pessoa_fisica_funcionario)].copy()
 
     ranking_bot10 = (
         df_bot10_base.groupby(["Cliente_Loja_UF_Filial", "Filial_Nome", "Cliente", "Loja", "UF"], as_index=False)[col_valor]

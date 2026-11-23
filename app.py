@@ -14,7 +14,7 @@ from components.charts_producao import render_graficos_producao
 from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 from components.sla_farol import render_secao_sla
-from components.forecast_ds import render_secao_previsao_ds, render_guia_explicativo_modelos
+from components.forecast_ds import render_secao_previsao_ds, render_secao_previsao_vs_real
 
 st.set_page_config(
     page_title="Dashboard Operacional & BI - Higimed",
@@ -197,13 +197,13 @@ def main():
     # =========================================================================
     # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS
     # =========================================================================
-    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_guia_ds, tab_tabela = st.tabs([
+    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_pvr, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
         "🚚 Custo de Frete",
         "🚦 Farol SLA & Operação",
         "🔮 Previsão & Data Science",
-        "📚 Modelos & Impacto Analítico",
+        "⚖️ Previsão X Real",
         "📜 Base Consolidada",
     ])
 
@@ -263,8 +263,8 @@ def main():
     with tab_prev:
         render_secao_previsao_ds(df_diario, df_frete_tratado)
 
-    with tab_guia_ds:
-        render_guia_explicativo_modelos()
+    with tab_pvr:
+        render_secao_previsao_vs_real(df_diario)
 
     with tab_tabela:
         df_base_tab = df_diario.copy()
