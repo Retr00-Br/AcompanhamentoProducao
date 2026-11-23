@@ -15,6 +15,13 @@ from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 from components.sla_farol import render_secao_sla
 from components.forecast_ds import render_secao_previsao_ds, render_secao_previsao_vs_real
+from components.forecast_ds import render_secao_previsao_ds
+
+try:
+    from components.forecast_ds import render_secao_previsao_vs_real
+except ImportError:
+    def render_secao_previsao_vs_real(df_diario):
+        st.warning("⚠️ Atualize o arquivo `components/forecast_ds.py` no repositório para habilitar a aba Previsão X Real.")
 
 st.set_page_config(
     page_title="Dashboard Operacional & BI - Higimed",
