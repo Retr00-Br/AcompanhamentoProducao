@@ -108,7 +108,8 @@ def _load_brazil_states_geojson():
 
 
 def _format_brl(val: float) -> str:
-    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    sinal = "-" if val < 0 else ""
+    return f"{sinal}R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _normalizar_filial(val) -> str:
@@ -137,7 +138,7 @@ def _plot_ranking_clientes_colunas(
     col_valor: str,
     periodo_label: str,
     filial_label: str,
-    cor_barra: str = "#1f77b4",
+    permite_negativos: bool = False,
 ):
     if df_ranking.empty:
         st.info("Nenhum lançamento de cliente encontrado para esta combinação de Filial e Mês.")
@@ -147,17 +148,18 @@ def _plot_ranking_clientes_colunas(
 
     for idx_rank, row_top in df_ranking.iterrows():
         label_cli = row_top["Cliente_Loja_UF_Filial"]
-        valor_cli = row_top[col_valor]
+        valor_cli = float(row_top[col_valor])
+        cor_item = "#d62728" if valor_cli < 0 else None
 
         fig_colunas.add_trace(
             go.Bar(
                 x=[f"#{idx_rank + 1} {label_cli}"],
                 y=[valor_cli],
                 name=f"#{idx_rank + 1} {label_cli} ({_format_brl(valor_cli)})",
-                marker=dict(line=dict(color="#000000", width=0.8)),
+                marker=dict(color=cor_item, line=dict(color="#000000", width=0.8)),
                 text=[_format_brl(valor_cli)],
                 textposition="outside",
-                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                textfont=dict(size=10, color="#d62728" if valor_cli < 0 else "#000000", family="Arial Black"),
                 cliponaxis=False,
                 hovertemplate=(
                     f"<b>#{idx_rank + 1} {label_cli}</b><br>"
@@ -168,7 +170,11 @@ def _plot_ranking_clientes_colunas(
             )
         )
 
-    max_y_colunas = df_ranking[col_valor].max() if not df_ranking.empty else 100.0
+    max_y_colunas = float(df_ranking[col_valor].max()) if not df_ranking.empty else 100.0
+    min_y_colunas = float(df_ranking[col_valor].min()) if not df_ranking.empty else 0.0
+
+    y_min_range = min(min_y_colunas * 1.28, 0.0) if permite_negativos and min_y_colunas < 0 else 0.0
+    y_max_range = max(max_y_colunas * 1.24, 100.0 if max_y_colunas > 0 else abs(min_y_colunas) * 0.25)
 
     fig_colunas.update_layout(
         template="plotly_white",
@@ -190,7 +196,10 @@ def _plot_ranking_clientes_colunas(
             title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
             showgrid=True,
             gridcolor="#e9ecef",
-            range=[0, max(max_y_colunas * 1.24, 100.0)],
+            range=[y_min_range, y_max_range],
+            zeroline=True,
+            zerolinewidth=1.5,
+            zerolinecolor="#334155",
         ),
         legend=dict(
             orientation="v",
@@ -287,10 +296,10 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         .reset_index(drop=True)
     )
 
-    _plot_ranking_clientes_colunas(ranking_top10, col_valor, mes_top10_sel, filial_top10_sel)
+    _plot_ranking_clientes_colunas(ranking_top10, col_valor, mes_top10_sel, filial_top10_sel, permite_negativos=False)
 
     # =========================================================================
-    # 2. RANKING BOTTOM 10 CLIENTES (MENOR FATURAMENTO > R$ 0,00) POR FILIAL & MÊS
+    # 2. RANKING BOTTOM 10 CLIENTES (INCLUINDO VALORES NEGATIVOS E POSITIVOS != 0)
     # =========================================================================
     st.markdown("---")
     st.markdown("#### 📉 Ranking Bottom 10 Clientes — Menor Faturamento Monetário (Diferenciado por Filial, Loja & UF)")
@@ -328,16 +337,16 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
         .sum()
     )
     ranking_bot10 = (
-        ranking_bot10[ranking_bot10[col_valor] > 0]
+        ranking_bot10[ranking_bot10[col_valor] != 0]
         .sort_values(col_valor, ascending=True)
         .head(10)
         .reset_index(drop=True)
     )
 
-    _plot_ranking_clientes_colunas(ranking_bot10, col_valor, mes_bot10_sel, filial_bot10_sel)
+    _plot_ranking_clientes_colunas(ranking_bot10, col_valor, mes_bot10_sel, filial_bot10_sel, permite_negativos=True)
 
     # =========================================================================
-    # 3. MAPA DO BRASIL POR UF + RANKING DE FATURAMENTO POR UF (POR FILIAL & MÊS)
+    # 3. MAPA DO BRASIL POR UF + RANKING + GRÁFICO DE BARRAS POR ESTADO (UF)
     # =========================================================================
     st.markdown("---")
     st.markdown("#### 🗺️ Mapa de Faturamento por Estado (UF) & Ranking Regional")
@@ -420,20 +429,7 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
             )
             st.plotly_chart(fig_mapa, use_container_width=True)
         else:
-            fig_bar_uf = px.bar(
-                df_uf.head(15),
-                x="UF",
-                y="Valor_Faturado",
-                text="Valor_Faturado_Fmt",
-                color="Valor_Faturado",
-                color_continuous_scale="Blues",
-            )
-            fig_bar_uf.update_layout(
-                title=dict(text="<b>Faturamento por Estado (UF)</b>", font=dict(size=14, color="#000000")),
-                template="plotly_white",
-                height=470,
-            )
-            st.plotly_chart(fig_bar_uf, use_container_width=True)
+            st.info("Sem coordenadas geográficas disponíveis para renderizar o mapa.")
 
     with col_rank_uf:
         st.markdown("**📊 Ranking de Faturamento por UF**")
@@ -455,6 +451,43 @@ def render_top10_faturamento(df_fat_detalhado: pd.DataFrame, unidade_selecionada
             use_container_width=True,
             height=430,
         )
+
+    # Gráfico de Barras por Estado (UF) posicionado logo abaixo do Mapa
+    if not df_uf.empty:
+        st.markdown("#### 📊 Faturamento Total por Estado (UF)")
+        max_uf_val = max(float(df_uf["Valor_Faturado"].max()), 100.0)
+        fig_bar_uf = go.Figure(
+            go.Bar(
+                x=df_uf["UF"],
+                y=df_uf["Valor_Faturado"],
+                marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
+                text=[f"{_format_brl(v)}<br>({p:.1f}%)" for v, p in zip(df_uf["Valor_Faturado"], df_uf["Participacao"])],
+                textposition="outside",
+                textfont=dict(size=9, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate="<b>Estado (UF): %{x}</b><br>Faturamento: R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+        fig_bar_uf.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#000000", size=12, family="Arial"),
+            height=480,
+            margin=dict(l=50, r=30, t=45, b=50),
+            xaxis=dict(
+                title=dict(text="<b>Estado (UF)</b>", font=dict(size=13, color="#000000")),
+                type="category",
+                tickfont=dict(size=11, color="#000000"),
+            ),
+            yaxis=dict(
+                title=dict(text="<b>Faturamento Monetário (R$)</b>", font=dict(size=13, color="#000000")),
+                showgrid=True,
+                gridcolor="#e9ecef",
+                range=[0, max_uf_val * 1.28],
+            ),
+        )
+        st.plotly_chart(fig_bar_uf, use_container_width=True)
 
 
 def render_tabela_consolidada(df_filtrado: pd.DataFrame, col_fat_ativa: str, col_dev_ativa: str):

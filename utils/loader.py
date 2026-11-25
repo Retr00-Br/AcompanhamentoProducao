@@ -394,7 +394,6 @@ def load_dados_sla(_sig: str = "") -> pd.DataFrame:
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Corrige eventuais caracteres UTF-8 lidos como latin1 (ex: LOGÃ\x8dSTICA -> LOGÍSTICA)
     for col_txt in ["Cliente", "Transport."]:
         if col_txt in df.columns:
             df[col_txt] = (
@@ -412,7 +411,6 @@ def load_dados_sla(_sig: str = "") -> pd.DataFrame:
     df["Dt_Romaneio"] = pd.to_datetime(df.get("Dt. Romaneio"), dayfirst=True, errors="coerce").dt.normalize()
     df["Dt_Entrega_Real"] = pd.to_datetime(df.get("Dt. Entrega Real"), dayfirst=True, errors="coerce").dt.normalize()
 
-    # Trata datas placeholder 01/01/1900 como sem previsão cadastrada
     df.loc[df["Dt_Previsao"].dt.year < 2020, "Dt_Previsao"] = pd.NaT
 
     if "NF" in df.columns:

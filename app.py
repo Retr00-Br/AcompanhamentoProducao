@@ -15,6 +15,7 @@ from components.charts_producao import render_graficos_producao
 from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 from components.sla_farol import render_secao_sla
+from components.expedicao_geral import render_secao_expedicao_geral
 from components.forecast_ds import render_secao_previsao_ds
 
 try:
@@ -174,7 +175,6 @@ def build_processed_dataset(_sig: str = ""):
         df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer")
 
-    # Preenchimento numérico pós-merge
     colunas_num = df_diario.select_dtypes(include=["number", "float64", "int64"]).columns
     df_diario[colunas_num] = df_diario[colunas_num].fillna(0.0)
 
@@ -205,10 +205,11 @@ def main():
     # =========================================================================
     # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS
     # =========================================================================
-    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_pvr, tab_tabela = st.tabs([
+    tab_fat, tab_prod, tab_exp_geral, tab_frete, tab_sla, tab_prev, tab_pvr, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
-        "🚚 Custo de Frete",
+        "🚚 Expedição Geral",
+        "💸 Custo de Frete",
         "🚦 Farol SLA & Operação",
         "🔮 Previsão & Data Science",
         "⚖️ Previsão X Real",
@@ -237,7 +238,7 @@ def main():
         )
 
         render_kpis_gerais(df_filtrado_fat, unidade_selecionada, df_fat_detalhado)
-        render_secao_faturamento(df_filtrado_fat, unidade_selecionada)
+        render_secao_faturamento(df_filtrado_fat, unidade_selecionada, df_diario_completo=df_diario)
         render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
     with tab_prod:
@@ -259,71 +260,16 @@ def main():
             key_prefix="filtro_tempo_prod",
         )
 
-        df_exp_periodo = pd.DataFrame()
-        filial_prod_sel = "Todas as Filiais"
-        cliente_prod_sel = "Todos os Clientes"
-
-        if df_exp_geral is not None and not df_exp_geral.empty and not df_filtrado_prod.empty:
-            dt_ini_p = df_filtrado_prod["DATA"].min()
-            dt_fim_p = df_filtrado_prod["DATA"].max()
-
-            df_exp_periodo = df_exp_geral[
-                (df_exp_geral["DATA"] >= dt_ini_p) & (df_exp_geral["DATA"] <= dt_fim_p)
-            ].copy()
-
-            col_f_prod1, col_f_prod2 = st.columns(2)
-            with col_f_prod1:
-                opcoes_filiais_prod = ["Todas as Filiais"] + sorted(
-                    df_exp_periodo["Filial_Nome"].dropna().unique().tolist()
-                )
-                filial_prod_sel = st.selectbox(
-                    "🏢 Filtrar Expedição por Filial:",
-                    options=opcoes_filiais_prod,
-                    index=0,
-                    key="prod_filial_sel",
-                )
-
-            if filial_prod_sel != "Todas as Filiais":
-                df_exp_periodo = df_exp_periodo[df_exp_periodo["Filial_Nome"] == filial_prod_sel].copy()
-
-            with col_f_prod2:
-                opcoes_clientes_prod = ["Todos os Clientes"] + sorted(
-                    df_exp_periodo["Cliente"].dropna().unique().tolist()
-                )
-                cliente_prod_sel = st.selectbox(
-                    "🏥 Filtrar Expedição por Cliente:",
-                    options=opcoes_clientes_prod,
-                    index=0,
-                    key="prod_cliente_sel",
-                )
-
-            if cliente_prod_sel != "Todos os Clientes":
-                df_exp_periodo = df_exp_periodo[df_exp_periodo["Cliente"] == cliente_prod_sel].copy()
-
-            if filial_prod_sel != "Todas as Filiais" or cliente_prod_sel != "Todos os Clientes":
-                exp_diario_filtrado = (
-                    df_exp_periodo.groupby("DATA")["Num.NF"]
-                    .count()
-                    .reset_index(name="Total_Expedidos_Filt")
-                )
-                df_filtrado_prod = pd.merge(
-                    df_filtrado_prod.drop(columns=["Total_Expedidos"], errors="ignore"),
-                    exp_diario_filtrado,
-                    on="DATA",
-                    how="left",
-                )
-                df_filtrado_prod["Total_Expedidos"] = df_filtrado_prod["Total_Expedidos_Filt"].fillna(0.0)
-                df_filtrado_prod.drop(columns=["Total_Expedidos_Filt"], inplace=True)
-
         render_kpis_medias(df_filtrado_prod, "Todas as Unidades (Geral)")
         render_graficos_producao(
             df_filtrado_prod,
             "Todas as Unidades (Geral)_Fat",
             "Todas as Unidades (Geral)",
-            df_exp_detalhado=df_exp_periodo,
-            filial_sel=filial_prod_sel,
-            cliente_sel=cliente_prod_sel,
+            df_base_completo=df_base_prod,
         )
+
+    with tab_exp_geral:
+        render_secao_expedicao_geral(df_exp_geral)
 
     with tab_frete:
         render_secao_frete(df_diario, "Todas as Unidades (Geral)_Fat", df_frete_tratado)

@@ -1,109 +1,411 @@
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 
-def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame) -> None:
-    """Renderiza a aba 📦 Expedição Geral com filtros por filial, período, KPIs e rastreio de PV/NF."""
-    st.subheader("📦 Expedição Geral — Consolidado por Unidade")
+def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
+    st.markdown("## 🚚 Expedição Geral — Análise por Filial, Matriz & Cliente")
 
     if df_exp_geral is None or df_exp_geral.empty:
-        st.warning("⚠️ Nenhum dado encontrado em `data/ExpedicaoGeral.xlsx`.")
+        st.info("📂 **Aguardando base:** Insira a planilha `ExpedicaoGeral.xlsx` na pasta `./data/` para visualizar os indicadores.")
         return
 
-    df = df_exp_geral.copy()
+    df_work = df_exp_geral.copy()
+    df_work["DATA"] = pd.to_datetime(df_work["DATA"], errors="coerce").dt.normalize()
+    df_work = df_work.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
 
-    # Filtros superiores
-    col_f1, col_f2, col_f3 = st.columns([1.5, 1.5, 2])
+    # =========================================================================
+    # 1. FILTRO TEMPORAL (CALENDÁRIO ESPECÍFICO, POR MÊS E POR SEMANA)
+    # =========================================================================
+    st.subheader("📅 Filtro Temporal — Expedição Geral")
 
+    col_ft1, col_ft2 = st.columns([1.5, 3])
+    with col_ft1:
+        tipo_filtro = st.radio(
+            "Filtrar período por:",
+            ["Intervalo de Calendário", "Por Mês", "Por Semana do Ano"],
+            horizontal=True,
+            key="exp_geral_filtro_radio",
+        )
+
+    min_date = df_work["DATA"].min().date()
+    max_date = df_work["DATA"].max().date()
+
+    with col_ft2:
+        if tipo_filtro == "Intervalo de Calendário":
+            data_sel = st.date_input(
+                "Selecione o Período:",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date,
+                key="exp_geral_filtro_dates",
+            )
+            dt_inicio, dt_fim = (
+                data_sel if isinstance(data_sel, tuple) and len(data_sel) == 2 else (min_date, max_date)
+            )
+        elif tipo_filtro == "Por Mês":
+            df_work["Mes_Ano"] = df_work["DATA"].dt.strftime("%Y-%m")
+            meses = sorted(df_work["Mes_Ano"].unique().tolist())
+            mes_sel = st.selectbox("Selecione o Mês:", meses, index=len(meses) - 1, key="exp_geral_filtro_mes")
+            dt_inicio = df_work[df_work["Mes_Ano"] == mes_sel]["DATA"].min().date()
+            dt_fim = df_work[df_work["Mes_Ano"] == mes_sel]["DATA"].max().date()
+        else:
+            df_work["Semana_Inicio"] = df_work["DATA"].apply(lambda d: d - pd.Timedelta(days=d.weekday()))
+            df_work["Semana_Fim"] = df_work["Semana_Inicio"] + pd.Timedelta(days=6)
+            df_work["Semana_Label"] = (
+                "Semana do dia "
+                + df_work["Semana_Inicio"].dt.strftime("%d/%m")
+                + " - "
+                + df_work["Semana_Fim"].dt.strftime("%d/%m")
+            )
+            semanas = df_work.sort_values("Semana_Inicio")["Semana_Label"].unique().tolist()
+            semana_sel = st.selectbox("Selecione a Semana:", semanas, index=len(semanas) - 1, key="exp_geral_filtro_sem")
+            dt_inicio = df_work[df_work["Semana_Label"] == semana_sel]["DATA"].min().date()
+            dt_fim = df_work[df_work["Semana_Label"] == semana_sel]["DATA"].max().date()
+
+    df_periodo = df_work[
+        (df_work["DATA"].dt.date >= dt_inicio) & (df_work["DATA"].dt.date <= dt_fim)
+    ].copy().reset_index(drop=True)
+
+    # Filtros de Filial/Matriz e Cliente
+    col_f1, col_f2 = st.columns(2)
     with col_f1:
-        filiais_disp = ["Todas as Filiais"] + sorted(df["Filial_Norm"].dropna().unique().tolist())
-        filial_sel = st.selectbox("🏢 Filtrar por Filial:", filiais_disp, key="exp_geral_filial")
+        opcoes_filiais = ["Todas as Unidades (Matriz + Filiais)"] + sorted(
+            df_periodo["Filial_Nome"].dropna().unique().tolist()
+        )
+        filial_sel = st.selectbox(
+            "🏢 Filtrar por Matriz / Filial:",
+            options=opcoes_filiais,
+            index=0,
+            key="exp_geral_filial_sel",
+        )
+
+    df_filtrado = df_periodo.copy()
+    if filial_sel != "Todas as Unidades (Matriz + Filiais)":
+        df_filtrado = df_filtrado[df_filtrado["Filial_Nome"] == filial_sel].copy()
 
     with col_f2:
-        busca_doc = st.text_input("🔎 Buscar PV ou NF:", placeholder="Ex: 12345", key="exp_geral_busca").strip()
+        opcoes_clientes = ["Todos os Clientes"] + sorted(df_filtrado["Cliente"].dropna().unique().tolist())
+        cliente_sel = st.selectbox(
+            "🏥 Filtrar por Cliente (Nome Fantasia):",
+            options=opcoes_clientes,
+            index=0,
+            key="exp_geral_cliente_sel",
+        )
 
-    with col_f3:
-        if "DATA" in df.columns and df["DATA"].notna().any():
-            min_dt = df["DATA"].min().date()
-            max_dt = df["DATA"].max().date()
-            periodo = st.date_input(
-                "📅 Período:",
-                value=(min_dt, max_dt),
-                min_value=min_dt,
-                max_value=max_dt,
-                key="exp_geral_periodo",
-            )
-            if isinstance(periodo, tuple) and len(periodo) == 2:
-                df = df[(df["DATA"].dt.date >= periodo[0]) & (df["DATA"].dt.date <= periodo[1])]
+    if cliente_sel != "Todos os Clientes":
+        df_filtrado = df_filtrado[df_filtrado["Cliente"] == cliente_sel].copy()
 
-    if filial_sel != "Todas as Filiais":
-        df = df[df["Filial_Norm"] == filial_sel]
+    if df_filtrado.empty:
+        st.warning("Nenhum registro de expedição encontrado para os filtros selecionados.")
+        return
 
-    if busca_doc:
-        mask_pv = df["PV_Norm"].astype(str).str.contains(busca_doc, case=False, na=False)
-        mask_nf = df["NF_Norm"].astype(str).str.contains(busca_doc, case=False, na=False)
-        df = df[mask_pv | mask_nf]
+    # =========================================================================
+    # 2. KPIs COMPLETOS (TOTAIS, MÉDIAS E EXTREMOS DO PERÍODO)
+    # =========================================================================
+    total_nfs = len(df_filtrado)
+    total_pvs = int((df_filtrado["Num.PV"] != "-").sum())
+    clientes_ativos = df_filtrado["Cliente"].nunique()
 
-    # KPIs principais
-    total_registros = len(df)
-    total_pvs = df["PV_Norm"].replace("", pd.NA).dropna().nunique()
-    total_nfs = df["NF_Norm"].replace("", pd.NA).dropna().nunique()
-    total_filiais = df["Filial_Norm"].nunique()
+    df_por_dia = df_filtrado.groupby("DATA", as_index=False)["Num.NF"].count().rename(columns={"Num.NF": "Qtd"})
+    dias_ativos = max(len(df_por_dia), 1)
+    media_dia = total_nfs / dias_ativos
+
+    r_max_d = df_por_dia.loc[df_por_dia["Qtd"].idxmax()]
+    r_min_d = df_por_dia.loc[df_por_dia["Qtd"].idxmin()]
+
+    df_por_cli = (
+        df_filtrado.groupby("Cliente", as_index=False)["Num.NF"]
+        .count()
+        .rename(columns={"Num.NF": "Qtd"})
+        .sort_values("Qtd", ascending=False)
+        .reset_index(drop=True)
+    )
+    top_cli = df_por_cli.iloc[0]
+    bot_cli = df_por_cli.iloc[-1]
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📋 Total de Registros", f"{total_registros:,}".replace(",", "."))
-    k2.metric("🧾 PVs Únicos", f"{total_pvs:,}".replace(",", "."))
-    k3.metric("📄 NFs Únicas", f"{total_nfs:,}".replace(",", "."))
-    k4.metric("🏢 Filiais Ativas", f"{total_filiais}")
+    k1.metric("📦 Total de NFs Expedidas", f"{total_nfs:,}".replace(",", "."), delta=f"{total_pvs:,} PVs vinculados".replace(",", "."), delta_color="off")
+    k2.metric("📊 Média Diária de Expedição", f"{media_dia:,.1f}".replace(",", "."), delta=f"{dias_ativos} dias operacionais", delta_color="off")
+    k3.metric("🏥 Clientes Atendidos", f"{clientes_ativos:,}".replace(",", "."))
+    k4.metric("🏢 Unidades Ativas", f"{df_filtrado['Filial_Nome'].nunique()} unidade(s)")
 
+    st.markdown("<div style='margin-top: 6px;'></div>", unsafe_allow_html=True)
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric(
+        "🚀 Dia c/ Maior Expedição",
+        pd.to_datetime(r_max_d["DATA"]).strftime("%d/%m/%Y"),
+        delta=f"{int(r_max_d['Qtd']):,} NFs".replace(",", "."),
+        delta_color="normal",
+    )
+    e2.metric(
+        "📉 Dia c/ Menor Expedição",
+        pd.to_datetime(r_min_d["DATA"]).strftime("%d/%m/%Y"),
+        delta=f"{int(r_min_d['Qtd']):,} NFs".replace(",", "."),
+        delta_color="inverse",
+    )
+    e3.metric(
+        "🏆 Cliente c/ Maior Volume",
+        str(top_cli["Cliente"])[:24],
+        delta=f"{int(top_cli['Qtd']):,} NFs".replace(",", "."),
+        delta_color="normal",
+    )
+    e4.metric(
+        "🔻 Cliente c/ Menor Volume",
+        str(bot_cli["Cliente"])[:24],
+        delta=f"{int(bot_cli['Qtd']):,} NFs".replace(",", "."),
+        delta_color="inverse",
+    )
+
+    # =========================================================================
+    # 3. EVOLUÇÃO DIÁRIA DA EXPEDIÇÃO NO PERÍODO
+    # =========================================================================
     st.markdown("---")
+    st.markdown("### 📈 Evolução Diária de Expedições (Qtd. Notas Fiscais)")
 
-    # Gráficos
-    col_g1, col_g2 = st.columns(2)
+    df_por_dia["Data_Str"] = df_por_dia["DATA"].dt.strftime("%d/%m")
+    max_d = max(int(df_por_dia["Qtd"].max()), 10)
 
-    with col_g1:
-        df_filial_agg = (
-            df.groupby("Filial_Norm", as_index=False)
-            .size()
-            .rename(columns={"Filial_Norm": "Filial", "size": "Quantidade"})
-            .sort_values("Quantidade", ascending=False)
+    fig_dia = go.Figure(
+        go.Bar(
+            x=df_por_dia["Data_Str"],
+            y=df_por_dia["Qtd"],
+            name="NFs Expedidas",
+            marker=dict(color="#ff7f0e", line=dict(color="#000000", width=0.8)),
+            text=[str(int(v)) for v in df_por_dia["Qtd"]],
+            textposition="outside",
+            textfont=dict(size=10, color="#000000", family="Arial Black"),
+            cliponaxis=False,
+            hovertemplate="<b>Data: %{x}</b><br>NFs Expedidas: %{y}<extra></extra>",
         )
-        fig_filial = px.bar(
-            df_filial_agg,
-            x="Filial",
-            y="Quantidade",
-            text_auto=True,
-            title="Volume Expedido por Filial",
-            color="Filial",
+    )
+    fig_dia.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=12, family="Arial"),
+        height=440,
+        margin=dict(l=45, r=30, t=40, b=55),
+        xaxis=dict(type="category", tickangle=-35, tickfont=dict(size=11, color="#000000")),
+        yaxis=dict(
+            title=dict(text="<b>Qtd. Notas Fiscais Expedidas</b>", font=dict(size=13, color="#000000")),
+            showgrid=True,
+            gridcolor="#e9ecef",
+            range=[0, max_d * 1.24],
+        ),
+    )
+    st.plotly_chart(fig_dia, use_container_width=True)
+
+    # =========================================================================
+    # 4. TOTAL DE EXPEDIÇÕES POR MATRIZ E FILIAIS & TOTAL MENSAL
+    # =========================================================================
+    st.markdown("---")
+    col_u1, col_u2 = st.columns(2)
+
+    with col_u1:
+        st.markdown("### 🏢 Total de Expedições por Matriz & Filiais (Período)")
+        df_fil_tot = (
+            df_periodo.groupby("Filial_Nome", as_index=False)["Num.NF"]
+            .count()
+            .rename(columns={"Num.NF": "Qtd"})
+            .sort_values("Qtd", ascending=False)
+            .reset_index(drop=True)
         )
-        fig_filial.update_layout(showlegend=False, xaxis_title="", yaxis_title="Registros")
-        st.plotly_chart(fig_filial, use_container_width=True)
+        tot_p_all = max(int(df_fil_tot["Qtd"].sum()), 1)
+        max_f = max(int(df_fil_tot["Qtd"].max()), 10)
 
-    with col_g2:
-        if "DATA" in df.columns and df["DATA"].notna().any():
-            df_dia = (
-                df.dropna(subset=["DATA"])
-                .groupby(["DATA", "Filial_Norm"], as_index=False)
-                .size()
-                .rename(columns={"Filial_Norm": "Filial", "size": "Quantidade"})
-                .sort_values("DATA")
+        fig_fil = go.Figure(
+            go.Bar(
+                x=df_fil_tot["Filial_Nome"],
+                y=df_fil_tot["Qtd"],
+                marker=dict(color=["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd"][: len(df_fil_tot)], line=dict(color="#000000", width=0.8)),
+                text=[f"{int(v):,} ({v / tot_p_all * 100:.1f}%)".replace(",", ".") for v in df_fil_tot["Qtd"]],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate="<b>%{x}</b><br>NFs Expedidas: %{y}<extra></extra>",
             )
-            fig_evol = px.line(
-                df_dia,
-                x="DATA",
-                y="Quantidade",
-                color="Filial",
-                markers=True,
-                title="Evolução Diária de Expedição por Filial",
+        )
+        fig_fil.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#000000", size=12, family="Arial"),
+            height=430,
+            margin=dict(l=40, r=25, t=40, b=45),
+            xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+            yaxis=dict(
+                title=dict(text="<b>Qtd. NFs Expedidas</b>", font=dict(size=12, color="#000000")),
+                showgrid=True,
+                gridcolor="#e9ecef",
+                range=[0, max_f * 1.25],
+            ),
+        )
+        st.plotly_chart(fig_fil, use_container_width=True)
+
+    with col_u2:
+        st.markdown("### 📅 Total Mensal Consolidado de Expedições")
+        df_base_m = df_work.copy()
+        if filial_sel != "Todas as Unidades (Matriz + Filiais)":
+            df_base_m = df_base_m[df_base_m["Filial_Nome"] == filial_sel].copy()
+        if cliente_sel != "Todos os Clientes":
+            df_base_m = df_base_m[df_base_m["Cliente"] == cliente_sel].copy()
+
+        df_base_m["Mes_Ano"] = df_base_m["DATA"].dt.strftime("%Y-%m")
+        df_mes_tot = (
+            df_base_m.groupby("Mes_Ano", as_index=False)["Num.NF"]
+            .count()
+            .rename(columns={"Num.NF": "Qtd"})
+            .sort_values("Mes_Ano")
+            .reset_index(drop=True)
+        )
+        max_m = max(int(df_mes_tot["Qtd"].max()), 10)
+
+        fig_mes = go.Figure(
+            go.Bar(
+                x=df_mes_tot["Mes_Ano"],
+                y=df_mes_tot["Qtd"],
+                marker=dict(color="#16a34a", line=dict(color="#000000", width=0.8)),
+                text=[f"{int(v):,}".replace(",", ".") for v in df_mes_tot["Qtd"]],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate="<b>Mês: %{x}</b><br>Total Expedido: %{y}<extra></extra>",
             )
-            fig_evol.update_layout(xaxis_title="Data", yaxis_title="Registros")
-            st.plotly_chart(fig_evol, use_container_width=True)
+        )
+        fig_mes.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#000000", size=12, family="Arial"),
+            height=430,
+            margin=dict(l=40, r=25, t=40, b=45),
+            xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+            yaxis=dict(
+                title=dict(text="<b>Total Mensal (NFs)</b>", font=dict(size=12, color="#000000")),
+                showgrid=True,
+                gridcolor="#e9ecef",
+                range=[0, max_m * 1.25],
+            ),
+        )
+        st.plotly_chart(fig_mes, use_container_width=True)
 
-    # Tabela detalhada
-    st.markdown("### 📑 Detalhamento dos Registros")
-    cols_ocultar = {"PV_Norm", "NF_Norm", "Filial_Norm", "Aba_Origem"}
-    cols_exibir = ["Filial_Norm"] + [c for c in df.columns if c not in cols_ocultar]
-    df_exibir = df[cols_exibir].rename(columns={"Filial_Norm": "Filial"})
+    # =========================================================================
+    # 5. COMPARATIVO MENSAL: MATRIZ VS. FILIAIS
+    # =========================================================================
+    st.markdown("---")
+    st.markdown("### 📊 Comparativo Mensal de Expedições: Matriz vs. Filiais")
 
-    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+    df_comp_m = df_work.copy()
+    df_comp_m["Mes_Ano"] = df_comp_m["DATA"].dt.strftime("%Y-%m")
+    df_piv_m = (
+        df_comp_m.groupby(["Mes_Ano", "Filial_Nome"], as_index=False)["Num.NF"]
+        .count()
+        .rename(columns={"Num.NF": "Qtd"})
+        .sort_values("Mes_Ano")
+    )
+
+    cores_unidades = {
+        "0101 - Matriz": "#1f77b4",
+        "0102 - Filial RJ": "#ff7f0e",
+        "0103 - Filial CP": "#2ca02c",
+        "0104 - Filial SBC": "#9467bd",
+        "0106 - Filial 106": "#0284c7",
+    }
+
+    fig_comp_m = go.Figure()
+    max_cm = max(int(df_piv_m["Qtd"].max()), 10)
+    for unid in sorted(df_piv_m["Filial_Nome"].unique()):
+        sub_u = df_piv_m[df_piv_m["Filial_Nome"] == unid]
+        fig_comp_m.add_trace(
+            go.Bar(
+                x=sub_u["Mes_Ano"],
+                y=sub_u["Qtd"],
+                name=unid,
+                marker=dict(color=cores_unidades.get(unid, "#64748b"), line=dict(color="#000000", width=0.8)),
+                text=[f"{int(v):,}".replace(",", ".") for v in sub_u["Qtd"]],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate=f"<b>%{{x}} — {unid}</b><br>NFs Expedidas: %{{y}}<extra></extra>",
+            )
+        )
+
+    fig_comp_m.update_layout(
+        template="plotly_white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#000000", size=12, family="Arial"),
+        height=460,
+        margin=dict(l=45, r=30, t=55, b=45),
+        barmode="group",
+        bargap=0.22,
+        xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+        yaxis=dict(
+            title=dict(text="<b>Qtd. NFs Expedidas por Unidade</b>", font=dict(size=13, color="#000000")),
+            showgrid=True,
+            gridcolor="#e9ecef",
+            range=[0, max_cm * 1.26],
+        ),
+        legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
+    )
+    st.plotly_chart(fig_comp_m, use_container_width=True)
+
+    # =========================================================================
+    # 6. TOP 10 CLIENTES EXPEDIDOS & TABELA AUDITÁVEL DE ROMANEIOS
+    # =========================================================================
+    st.markdown("---")
+    col_t1, col_t2 = st.columns([1.2, 1.2])
+
+    with col_t1:
+        st.markdown("### 🏆 Top 10 Clientes por Volume de NFs Expedidas")
+        df_top10 = (
+            df_filtrado.groupby(["Cliente", "Filial_Nome"], as_index=False)["Num.NF"]
+            .count()
+            .rename(columns={"Num.NF": "Qtd_NFs"})
+            .sort_values("Qtd_NFs", ascending=False)
+            .head(10)
+            .reset_index(drop=True)
+        )
+        df_top10["Label"] = df_top10["Cliente"] + " (" + df_top10["Filial_Nome"].str[:4] + ")"
+        max_t10 = max(int(df_top10["Qtd_NFs"].max()), 10)
+
+        fig_t10 = go.Figure(
+            go.Bar(
+                y=df_top10["Label"],
+                x=df_top10["Qtd_NFs"],
+                orientation="h",
+                marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
+                text=df_top10["Qtd_NFs"],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate="<b>%{y}</b><br>NFs Expedidas: %{x}<extra></extra>",
+            )
+        )
+        fig_t10.update_layout(
+            template="plotly_white",
+            height=430,
+            margin=dict(l=170, r=45, t=30, b=30),
+            xaxis=dict(title="<b>Qtd. NFs Expedidas</b>", range=[0, max_t10 * 1.22], gridcolor="#e9ecef"),
+            yaxis=dict(autorange="reversed", tickfont=dict(size=10, color="#000000")),
+        )
+        st.plotly_chart(fig_t10, use_container_width=True)
+
+    with col_t2:
+        st.markdown("### 📋 Registro Detalhado de Romaneios & NFs")
+        df_tab = df_filtrado.copy()
+        df_tab["Dt. Romaneio"] = df_tab["DATA"].dt.strftime("%d/%m/%Y")
+        st.dataframe(
+            df_tab[["Dt. Romaneio", "Filial_Nome", "Cliente", "Num.PV", "Num.NF"]].rename(
+                columns={
+                    "Filial_Nome": "Matriz / Filial",
+                    "Cliente": "Cliente (Nome Fantasia)",
+                    "Num.PV": "Pedido (PV)",
+                    "Num.NF": "Nota Fiscal",
+                }
+            ),
+            use_container_width=True,
+            height=430,
+            hide_index=True,
+        )

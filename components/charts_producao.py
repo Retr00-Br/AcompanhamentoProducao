@@ -7,9 +7,7 @@ def render_graficos_producao(
     df_filtrado: pd.DataFrame,
     col_fat_ativa: str,
     unidade_selecionada: str,
-    df_exp_detalhado: pd.DataFrame = None,
-    filial_sel: str = "Todas as Filiais",
-    cliente_sel: str = "Todos os Clientes",
+    df_base_completo: pd.DataFrame = None,
 ):
     if df_filtrado is None or df_filtrado.empty:
         st.info("Sem dados de produção e expedição para o período selecionado.")
@@ -34,18 +32,12 @@ def render_graficos_producao(
         return
 
     df_p["Data_Str"] = df_p["DATA"].dt.strftime("%d/%m")
-    filtro_ativo = (filial_sel != "Todas as Filiais") or (cliente_sel != "Todos os Clientes")
 
     # =========================================================================
     # 1. PRODUÇÃO DIÁRIA ISOLADA: NOTAS SAUDÁVEIS VS. BACKLOG
     # =========================================================================
     st.markdown("---")
     st.markdown("### 🏭 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
-    if filtro_ativo:
-        st.caption(
-            "ℹ️ *Os indicadores de Produção (Saudável x Backlog) refletem o volume global do galpão; "
-            "os filtros de Filial e Cliente aplicam-se diretamente aos gráficos e tabelas de Expedição abaixo.*"
-        )
 
     fig_sb = go.Figure()
 
@@ -104,31 +96,29 @@ def render_graficos_producao(
     # 2. RELAÇÃO DIÁRIA: NOTAS REALIZADAS VS. VOLUME EXPEDIDO
     # =========================================================================
     st.markdown("---")
-    subtitulo_filtro = f" — {filial_sel} | {cliente_sel}" if filtro_ativo else ""
-    st.markdown(f"### 📊 Relação Diária: Notas Realizadas vs. Volume Expedido{subtitulo_filtro}")
+    st.markdown("### 📊 Relação Diária: Notas Realizadas vs. Volume Expedido")
 
     fig_exp = go.Figure()
 
-    if not filtro_ativo:
-        fig_exp.add_trace(
-            go.Bar(
-                x=df_p["Data_Str"],
-                y=df_p["Notas_Realizadas"],
-                name="Notas Realizadas (PVs)",
-                marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
-                text=[str(int(v)) if v > 0 else "" for v in df_p["Notas_Realizadas"]],
-                textposition="outside",
-                textfont=dict(size=10, color="#000000", family="Arial Black"),
-                cliponaxis=False,
-                hovertemplate="<b>Data: %{x}</b><br>Notas Realizadas: %{y}<extra></extra>",
-            )
+    fig_exp.add_trace(
+        go.Bar(
+            x=df_p["Data_Str"],
+            y=df_p["Notas_Realizadas"],
+            name="Notas Realizadas (PVs)",
+            marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
+            text=[str(int(v)) if v > 0 else "" for v in df_p["Notas_Realizadas"]],
+            textposition="outside",
+            textfont=dict(size=10, color="#000000", family="Arial Black"),
+            cliponaxis=False,
+            hovertemplate="<b>Data: %{x}</b><br>Notas Realizadas: %{y}<extra></extra>",
         )
+    )
 
     fig_exp.add_trace(
         go.Bar(
             x=df_p["Data_Str"],
             y=df_p["Total_Expedidos"],
-            name="Volume Expedido (NFs)",
+            name="Volume Expedido",
             marker=dict(color="#ff7f0e", line=dict(color="#000000", width=0.8)),
             text=[str(int(v)) if v > 0 else "" for v in df_p["Total_Expedidos"]],
             textposition="outside",
@@ -138,11 +128,7 @@ def render_graficos_producao(
         )
     )
 
-    max_exp = max(
-        (df_p["Notas_Realizadas"].max() if not filtro_ativo else 0),
-        df_p["Total_Expedidos"].max(),
-        10,
-    )
+    max_exp = max(df_p["Notas_Realizadas"].max(), df_p["Total_Expedidos"].max(), 10)
 
     fig_exp.update_layout(
         template="plotly_white",
@@ -166,63 +152,125 @@ def render_graficos_producao(
     st.plotly_chart(fig_exp, use_container_width=True)
 
     # =========================================================================
-    # 3. DETALHAMENTO EXPEDIÇÃO GERAL (TOP 10 CLIENTES & ROMANEIOS)
+    # 3. VISÃO CONSOLIDADA MENSAL: SAUDÁVEL X BACKLOG & REALIZADAS X EXPEDIDO
     # =========================================================================
-    if df_exp_detalhado is not None and not df_exp_detalhado.empty:
+    df_m_src = df_base_completo.copy() if (df_base_completo is not None and not df_base_completo.empty) else df_p.copy()
+    df_m_src["DATA"] = pd.to_datetime(df_m_src["DATA"]).dt.normalize()
+    df_m_src["Mes_Ano"] = df_m_src["DATA"].dt.strftime("%Y-%m")
+
+    df_mensal_prod = (
+        df_m_src.groupby("Mes_Ano", as_index=False)[["Saudavel", "Backlog", "Notas_Realizadas", "Total_Expedidos"]]
+        .sum()
+        .sort_values("Mes_Ano")
+        .reset_index(drop=True)
+    )
+    df_mensal_prod = df_mensal_prod[
+        (df_mensal_prod["Saudavel"] > 0)
+        | (df_mensal_prod["Backlog"] > 0)
+        | (df_mensal_prod["Notas_Realizadas"] > 0)
+        | (df_mensal_prod["Total_Expedidos"] > 0)
+    ].reset_index(drop=True)
+
+    if not df_mensal_prod.empty:
         st.markdown("---")
-        st.markdown("### 🚚 Detalhamento da Expedição Geral (Por Cliente, Filial & NF)")
+        col_m1, col_m2 = st.columns(2)
 
-        col_g1, col_g2 = st.columns([1.25, 1.15])
-
-        with col_g1:
-            st.markdown("#### 🏆 Top 10 Clientes por Volume de NFs Expedidas")
-            df_top_cli = (
-                df_exp_detalhado.groupby(["Cliente", "Filial_Nome"], as_index=False)["Num.NF"]
-                .count()
-                .rename(columns={"Num.NF": "Qtd_NFs"})
-                .sort_values("Qtd_NFs", ascending=False)
-                .head(10)
-                .reset_index(drop=True)
-            )
-            df_top_cli["Label"] = df_top_cli["Cliente"] + " (" + df_top_cli["Filial_Nome"].str[:4] + ")"
-
-            fig_top = go.Figure(
+        with col_m1:
+            st.markdown("### 📅 Total Mensal: Notas Saudáveis vs. Backlog")
+            fig_m_sb = go.Figure()
+            fig_m_sb.add_trace(
                 go.Bar(
-                    y=df_top_cli["Label"],
-                    x=df_top_cli["Qtd_NFs"],
-                    orientation="h",
-                    marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
-                    text=df_top_cli["Qtd_NFs"],
+                    x=df_mensal_prod["Mes_Ano"],
+                    y=df_mensal_prod["Saudavel"],
+                    name="Notas Saudáveis",
+                    marker=dict(color="#2ca02c", line=dict(color="#000000", width=0.8)),
+                    text=[f"{int(v):,}".replace(",", ".") if v > 0 else "" for v in df_mensal_prod["Saudavel"]],
                     textposition="outside",
                     textfont=dict(size=10, color="#000000", family="Arial Black"),
                     cliponaxis=False,
-                    hovertemplate="<b>%{y}</b><br>NFs Expedidas: %{x}<extra></extra>",
+                    hovertemplate="<b>Mês: %{x}</b><br>Saudáveis: %{y}<extra></extra>",
                 )
             )
-            max_top = max(df_top_cli["Qtd_NFs"].max() if not df_top_cli.empty else 10, 10)
-            fig_top.update_layout(
+            fig_m_sb.add_trace(
+                go.Bar(
+                    x=df_mensal_prod["Mes_Ano"],
+                    y=df_mensal_prod["Backlog"],
+                    name="Backlog",
+                    marker=dict(color="#d62728", line=dict(color="#000000", width=0.8)),
+                    text=[f"{int(v):,}".replace(",", ".") if v > 0 else "" for v in df_mensal_prod["Backlog"]],
+                    textposition="outside",
+                    textfont=dict(size=10, color="#d62728", family="Arial Black"),
+                    cliponaxis=False,
+                    hovertemplate="<b>Mês: %{x}</b><br>Backlog: %{y}<extra></extra>",
+                )
+            )
+            max_m_sb = max(df_mensal_prod["Saudavel"].max(), df_mensal_prod["Backlog"].max(), 10)
+            fig_m_sb.update_layout(
                 template="plotly_white",
-                height=430,
-                margin=dict(l=160, r=45, t=30, b=30),
-                xaxis=dict(title="<b>Qtd. Notas Fiscais Expedidas</b>", range=[0, max_top * 1.22], gridcolor="#e9ecef"),
-                yaxis=dict(autorange="reversed", tickfont=dict(size=10, color="#000000")),
-            )
-            st.plotly_chart(fig_top, use_container_width=True)
-
-        with col_g2:
-            st.markdown("#### 📋 Notas Fiscais & Romaneios Expedidos")
-            df_tab_exp = df_exp_detalhado.copy()
-            df_tab_exp["Dt. Romaneio"] = df_tab_exp["DATA"].dt.strftime("%d/%m/%Y")
-            st.dataframe(
-                df_tab_exp[["Dt. Romaneio", "Filial_Nome", "Cliente", "Num.PV", "Num.NF"]].rename(
-                    columns={
-                        "Filial_Nome": "Filial",
-                        "Cliente": "Cliente (Nome Fantasia)",
-                        "Num.PV": "Pedido (PV)",
-                        "Num.NF": "Nota Fiscal",
-                    }
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#000000", size=12, family="Arial"),
+                height=440,
+                margin=dict(l=40, r=25, t=50, b=45),
+                barmode="group",
+                bargap=0.25,
+                yaxis=dict(
+                    title=dict(text="<b>Total Mensal de Notas</b>", font=dict(size=12, color="#000000")),
+                    showgrid=True,
+                    gridcolor="#e9ecef",
+                    range=[0, max_m_sb * 1.26],
                 ),
-                use_container_width=True,
-                height=430,
-                hide_index=True,
+                xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+                legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=11, color="#000000")),
             )
+            st.plotly_chart(fig_m_sb, use_container_width=True)
+
+        with col_m2:
+            st.markdown("### 📅 Total Mensal: Notas Realizadas vs. Volume Expedido")
+            fig_m_exp = go.Figure()
+            fig_m_exp.add_trace(
+                go.Bar(
+                    x=df_mensal_prod["Mes_Ano"],
+                    y=df_mensal_prod["Notas_Realizadas"],
+                    name="Notas Realizadas (PVs)",
+                    marker=dict(color="#1f77b4", line=dict(color="#000000", width=0.8)),
+                    text=[f"{int(v):,}".replace(",", ".") if v > 0 else "" for v in df_mensal_prod["Notas_Realizadas"]],
+                    textposition="outside",
+                    textfont=dict(size=10, color="#000000", family="Arial Black"),
+                    cliponaxis=False,
+                    hovertemplate="<b>Mês: %{x}</b><br>Notas Realizadas: %{y}<extra></extra>",
+                )
+            )
+            fig_m_exp.add_trace(
+                go.Bar(
+                    x=df_mensal_prod["Mes_Ano"],
+                    y=df_mensal_prod["Total_Expedidos"],
+                    name="Volume Expedido",
+                    marker=dict(color="#ff7f0e", line=dict(color="#000000", width=0.8)),
+                    text=[f"{int(v):,}".replace(",", ".") if v > 0 else "" for v in df_mensal_prod["Total_Expedidos"]],
+                    textposition="outside",
+                    textfont=dict(size=10, color="#000000", family="Arial Black"),
+                    cliponaxis=False,
+                    hovertemplate="<b>Mês: %{x}</b><br>Volume Expedido: %{y}<extra></extra>",
+                )
+            )
+            max_m_exp = max(df_mensal_prod["Notas_Realizadas"].max(), df_mensal_prod["Total_Expedidos"].max(), 10)
+            fig_m_exp.update_layout(
+                template="plotly_white",
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#000000", size=12, family="Arial"),
+                height=440,
+                margin=dict(l=40, r=25, t=50, b=45),
+                barmode="group",
+                bargap=0.25,
+                yaxis=dict(
+                    title=dict(text="<b>Total Mensal de Pedidos / Notas</b>", font=dict(size=12, color="#000000")),
+                    showgrid=True,
+                    gridcolor="#e9ecef",
+                    range=[0, max_m_exp * 1.26],
+                ),
+                xaxis=dict(type="category", tickfont=dict(size=11, color="#000000")),
+                legend=dict(orientation="h", y=1.14, x=1, xanchor="right", font=dict(size=11, color="#000000")),
+            )
+            st.plotly_chart(fig_m_exp, use_container_width=True)

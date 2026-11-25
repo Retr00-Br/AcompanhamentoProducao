@@ -200,7 +200,6 @@ def _plot_somente_previsao_multi(
     fmt_hover = "R$ %{y:,.2f}" if is_moeda else "%{y:,.1f}"
 
     n_pts = len(x_labels)
-    tem_barra = any(s.get("tipo", "linha") == "barra" for s in series_dict)
     qtd_linhas = sum(1 for s in series_dict if s.get("tipo", "linha") != "barra")
 
     max_y1 = 10.0
@@ -216,13 +215,11 @@ def _plot_somente_previsao_multi(
             else:
                 max_y1 = max(max_y1, float(np.max(vals)))
 
-        # Decide exibição de rótulos conforme tamanho do horizonte (6 dias vs 22 dias)
         if modo_rotulos == "Apenas Hover (Limpo)":
             mostrar_texto = [False] * n_pts
         elif modo_rotulos == "Mostrar Todos":
             mostrar_texto = [True] * n_pts
         else:
-            # Automático: em 6 dias mostra todos; em 22 dias alterna para não encavalar horizontalmente
             if n_pts <= 8:
                 mostrar_texto = [True] * n_pts
             elif n_pts <= 14:
@@ -236,7 +233,6 @@ def _plot_somente_previsao_multi(
         ]
 
         if s.get("tipo", "linha") == "barra":
-            # Barra com rótulo DENTRO da barra (evita 100% colisão com linha próxima ao topo)
             pos_barra = "inside" if qtd_linhas > 0 else "outside"
             cor_txt_barra = "#ffffff" if pos_barra == "inside" else "#000000"
 
@@ -257,7 +253,6 @@ def _plot_somente_previsao_multi(
                 secondary_y=is_sec,
             )
         else:
-            # Alterna posição entre top center e bottom center se houver múltiplas linhas
             if is_sec:
                 pos_linha = "top center"
             elif idx_linha_atual == 0:
@@ -266,7 +261,6 @@ def _plot_somente_previsao_multi(
                 pos_linha = "bottom center"
             idx_linha_atual += 1
 
-            # Em horizontes longos (22 dias) com mais de 1 linha, exibe texto apenas na linha principal
             if modo_rotulos == "Automático (Anti-Sobreposição)" and n_pts > 10 and is_sec:
                 textos_linha = [""] * n_pts
                 modo_scatter = "lines+markers"
@@ -676,7 +670,6 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
             delta_color="inverse",
         )
 
-        # Em 22 dias úteis, exibe em largura total (1 coluna por gráfico) para máxima legibilidade
         if n_dias_prev > 10:
             _plot_somente_previsao_multi(
                 f"📈 Previsão Diária: Faturamento Bruto, Líquido & Devoluções ({modelo_sel})",
@@ -895,6 +888,108 @@ def render_secao_previsao_ds(df_diario: pd.DataFrame, df_frete_tratado: pd.DataF
             mime="text/csv",
         )
 
+        # =====================================================================
+        # COMPARATIVO MENSAL CONSOLIDADO DAS PROJEÇÕES
+        # =====================================================================
+        st.markdown("---")
+        st.markdown(f"### 📅 Comparativo Mensal Consolidado das Projeções ({modelo_sel})")
+
+        df_prev_mes_raw = pd.DataFrame(
+            {
+                "Mes_Ano": datas_alvo.strftime("%Y-%m"),
+                "Fat_Bruto": prev_fat_bruto_vals,
+                "Fat_Liq": prev_fat_liq["forecast"],
+                "Devolucoes": prev_dev["forecast"],
+                "Frete": prev_frete["forecast"],
+                "Notas": prev_notas["forecast"],
+                "Saudavel": prev_saudavel["forecast"],
+                "Backlog": prev_backlog["forecast"],
+                "Expedidos": prev_exp["forecast"],
+            }
+        )
+        df_prev_mes = df_prev_mes_raw.groupby("Mes_Ano", as_index=False).sum().sort_values("Mes_Ano").reset_index(drop=True)
+
+        col_pm1, col_pm2 = st.columns(2)
+        with col_pm1:
+            st.markdown("#### 💰 Projeção Mensal: Faturamento Bruto, Líquido & Frete (R$)")
+            fig_pm_fin = go.Figure()
+            fig_pm_fin.add_trace(
+                go.Bar(
+                    x=df_prev_mes["Mes_Ano"],
+                    y=df_prev_mes["Fat_Bruto"],
+                    name="Fat. Bruto Previsto",
+                    marker_color="#1f77b4",
+                    text=[_fmt_brl_compacto(v) for v in df_prev_mes["Fat_Bruto"]],
+                    textposition="outside",
+                    cliponaxis=False,
+                )
+            )
+            fig_pm_fin.add_trace(
+                go.Bar(
+                    x=df_prev_mes["Mes_Ano"],
+                    y=df_prev_mes["Fat_Liq"],
+                    name="Fat. Líquido Previsto",
+                    marker_color="#16a34a",
+                    text=[_fmt_brl_compacto(v) for v in df_prev_mes["Fat_Liq"]],
+                    textposition="outside",
+                    cliponaxis=False,
+                )
+            )
+            fig_pm_fin.add_trace(
+                go.Bar(
+                    x=df_prev_mes["Mes_Ano"],
+                    y=df_prev_mes["Frete"],
+                    name="Frete Previsto",
+                    marker_color="#7c3aed",
+                    text=[_fmt_brl_compacto(v) for v in df_prev_mes["Frete"]],
+                    textposition="outside",
+                    cliponaxis=False,
+                )
+            )
+            max_pmf = max(float(df_prev_mes["Fat_Bruto"].max()), 100.0)
+            fig_pm_fin.update_layout(
+                template="plotly_white",
+                height=420,
+                barmode="group",
+                margin=dict(l=40, r=25, t=45, b=45),
+                xaxis=dict(type="category"),
+                yaxis=dict(title="<b>Valor Mensal Projetado (R$)</b>", range=[0, max_pmf * 1.28], gridcolor="#e9ecef"),
+                legend=dict(orientation="h", y=1.14, x=0, xanchor="left"),
+            )
+            st.plotly_chart(fig_pm_fin, use_container_width=True)
+
+        with col_pm2:
+            st.markdown("#### 🏭 Projeção Mensal: Notas Realizadas, Saudáveis, Backlog & Expedição")
+            fig_pm_op = go.Figure()
+            for col_k, nome_k, cor_k in [
+                ("Notas", "Notas Realizadas", "#1f77b4"),
+                ("Saudavel", "Notas Saudáveis", "#16a34a"),
+                ("Backlog", "Backlog", "#dc2626"),
+                ("Expedidos", "Volume Expedido", "#ea580c"),
+            ]:
+                fig_pm_op.add_trace(
+                    go.Bar(
+                        x=df_prev_mes["Mes_Ano"],
+                        y=df_prev_mes[col_k],
+                        name=nome_k,
+                        marker_color=cor_k,
+                        text=[_fmt_int(v) for v in df_prev_mes[col_k]],
+                        textposition="outside",
+                        cliponaxis=False,
+                    )
+                )
+            max_pmo = max(float(df_prev_mes[["Notas", "Saudavel", "Backlog", "Expedidos"]].max().max()), 10.0)
+            fig_pm_op.update_layout(
+                template="plotly_white",
+                height=420,
+                barmode="group",
+                margin=dict(l=40, r=25, t=45, b=45),
+                xaxis=dict(type="category"),
+                yaxis=dict(title="<b>Volume Mensal Projetado</b>", range=[0, max_pmo * 1.28], gridcolor="#e9ecef"),
+                legend=dict(orientation="h", y=1.14, x=0, xanchor="left"),
+            )
+            st.plotly_chart(fig_pm_op, use_container_width=True)
+
 
 def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
     """
@@ -1100,7 +1195,6 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
         for i, v in enumerate(prev_vals)
     ]
 
-    # Barra com rótulo DENTRO da barra (branco negrito) — nunca colide com a linha de Previsão
     fig_uniao.add_trace(
         go.Bar(
             x=x_labels,
@@ -1117,7 +1211,6 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
         )
     )
 
-    # Linha de Previsão com rótulo ACIMA do diamante (top center)
     fig_uniao.add_trace(
         go.Scatter(
             x=x_labels,
@@ -1252,3 +1345,88 @@ def render_secao_previsao_vs_real(df_diario: pd.DataFrame):
         }
     )
     st.dataframe(df_auditoria, use_container_width=True, height=390, hide_index=True)
+
+    # =========================================================================
+    # COMPARATIVO MENSAL CONSOLIDADO: PREVISÃO X REAL (TODOS OS INDICADORES)
+    # =========================================================================
+    st.markdown("---")
+    st.markdown(f"### 📅 Comparativo Mensal Consolidado: Previsão X Real — {indicador_sel}")
+
+    df_m_full = df.copy()
+    datas_all = pd.DatetimeIndex(df_m_full["DATA"])
+    for c_src, c_dst in [
+        ("Fat_Liq_Real", "Prev_M_Fat"),
+        ("Notas_Realizadas", "Prev_M_Notas"),
+        ("Total_Expedidos", "Prev_M_Exp"),
+        ("Total_Frete", "Prev_M_Frete"),
+        ("Backlog", "Prev_M_Backlog"),
+    ]:
+        sub_tr_m = df_m_full[df_m_full[c_src] > 0] if (df_m_full[c_src] > 0).sum() >= 4 else df_m_full
+        res_m = _treinar_e_prever_datas(
+            pd.DatetimeIndex(sub_tr_m["DATA"]),
+            sub_tr_m[c_src].values,
+            datas_all,
+            modelo_pvr,
+        )
+        df_m_full[c_dst] = res_m["forecast"]
+
+    df_m_full["Mes_Ano"] = df_m_full["DATA"].dt.strftime("%Y-%m")
+    mapa_mensal_pvr = {
+        "💵 Faturamento Líquido (R$)": ("Fat_Liq_Real", "Prev_M_Fat", True),
+        "📦 Notas Realizadas / PVs (Qtd)": ("Notas_Realizadas", "Prev_M_Notas", False),
+        "🚚 Volume Expedido (Qtd)": ("Total_Expedidos", "Prev_M_Exp", False),
+        "💸 Custo de Frete Terceirizado (R$)": ("Total_Frete", "Prev_M_Frete", True),
+        "🔴 Backlog Operacional (Qtd)": ("Backlog", "Prev_M_Backlog", False),
+    }
+
+    c_real_m, c_prev_m, is_moeda_m = mapa_mensal_pvr[indicador_sel]
+    df_grp_m = (
+        df_m_full.groupby("Mes_Ano", as_index=False)[[c_real_m, c_prev_m]]
+        .sum()
+        .sort_values("Mes_Ano")
+        .reset_index(drop=True)
+    )
+    df_grp_m = df_grp_m[(df_grp_m[c_real_m] > 0) | (df_grp_m[c_prev_m] > 0)].reset_index(drop=True)
+
+    if not df_grp_m.empty:
+        fig_pvr_m = go.Figure()
+        fig_pvr_m.add_trace(
+            go.Bar(
+                x=df_grp_m["Mes_Ano"],
+                y=df_grp_m[c_real_m],
+                name="Total Mensal Realizado",
+                marker_color="#1f77b4",
+                text=[_fmt_brl(v) if is_moeda_m else _fmt_int(v) for v in df_grp_m[c_real_m]],
+                textposition="outside",
+                textfont=dict(size=10, color="#000000", family="Arial Black"),
+                cliponaxis=False,
+            )
+        )
+        fig_pvr_m.add_trace(
+            go.Bar(
+                x=df_grp_m["Mes_Ano"],
+                y=df_grp_m[c_prev_m],
+                name=f"Total Mensal Previsto ({modelo_pvr})",
+                marker_color="#d97706",
+                text=[_fmt_brl(v) if is_moeda_m else _fmt_int(v) for v in df_grp_m[c_prev_m]],
+                textposition="outside",
+                textfont=dict(size=10, color="#b45309", family="Arial Black"),
+                cliponaxis=False,
+            )
+        )
+        max_pm_pvr = max(float(df_grp_m[c_real_m].max()), float(df_grp_m[c_prev_m].max()), 10.0)
+        fig_pvr_m.update_layout(
+            template="plotly_white",
+            height=440,
+            barmode="group",
+            bargap=0.25,
+            margin=dict(l=45, r=30, t=45, b=45),
+            xaxis=dict(type="category"),
+            yaxis=dict(
+                title=dict(text="<b>Total Mensal (R$)</b>" if is_moeda_m else "<b>Total Mensal (Qtd)</b>"),
+                range=[0, max_pm_pvr * 1.26],
+                gridcolor="#e9ecef",
+            ),
+            legend=dict(orientation="h", y=1.14, x=0, xanchor="left"),
+        )
+        st.plotly_chart(fig_pvr_m, use_container_width=True)
