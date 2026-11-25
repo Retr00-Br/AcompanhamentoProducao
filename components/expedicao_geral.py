@@ -3,6 +3,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
+CORES_UNIDADES = {
+    "0101 - Matriz": "#1f77b4",
+    "0102 - Filial RJ": "#ff7f0e",
+    "0103 - Filial CP": "#2ca02c",
+    "0104 - Filial SBC": "#9467bd",
+    "0106 - Filial 106": "#0284c7",
+}
+
+
 def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
     st.markdown("## 🚚 Expedição Geral — Análise por Filial, Matriz & Cliente")
 
@@ -218,7 +227,10 @@ def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
             go.Bar(
                 x=df_fil_tot["Filial_Nome"],
                 y=df_fil_tot["Qtd"],
-                marker=dict(color=["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd"][: len(df_fil_tot)], line=dict(color="#000000", width=0.8)),
+                marker=dict(
+                    color=[CORES_UNIDADES.get(u, "#64748b") for u in df_fil_tot["Filial_Nome"]],
+                    line=dict(color="#000000", width=0.8),
+                ),
                 text=[f"{int(v):,} ({v / tot_p_all * 100:.1f}%)".replace(",", ".") for v in df_fil_tot["Qtd"]],
                 textposition="outside",
                 textfont=dict(size=10, color="#000000", family="Arial Black"),
@@ -297,6 +309,8 @@ def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
     st.markdown("### 📊 Comparativo Mensal de Expedições: Matriz vs. Filiais")
 
     df_comp_m = df_work.copy()
+    if cliente_sel != "Todos os Clientes":
+        df_comp_m = df_comp_m[df_comp_m["Cliente"] == cliente_sel].copy()
     df_comp_m["Mes_Ano"] = df_comp_m["DATA"].dt.strftime("%Y-%m")
     df_piv_m = (
         df_comp_m.groupby(["Mes_Ano", "Filial_Nome"], as_index=False)["Num.NF"]
@@ -305,16 +319,8 @@ def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
         .sort_values("Mes_Ano")
     )
 
-    cores_unidades = {
-        "0101 - Matriz": "#1f77b4",
-        "0102 - Filial RJ": "#ff7f0e",
-        "0103 - Filial CP": "#2ca02c",
-        "0104 - Filial SBC": "#9467bd",
-        "0106 - Filial 106": "#0284c7",
-    }
-
     fig_comp_m = go.Figure()
-    max_cm = max(int(df_piv_m["Qtd"].max()), 10)
+    max_cm = max(int(df_piv_m["Qtd"].max()) if not df_piv_m.empty else 10, 10)
     for unid in sorted(df_piv_m["Filial_Nome"].unique()):
         sub_u = df_piv_m[df_piv_m["Filial_Nome"] == unid]
         fig_comp_m.add_trace(
@@ -322,7 +328,7 @@ def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
                 x=sub_u["Mes_Ano"],
                 y=sub_u["Qtd"],
                 name=unid,
-                marker=dict(color=cores_unidades.get(unid, "#64748b"), line=dict(color="#000000", width=0.8)),
+                marker=dict(color=CORES_UNIDADES.get(unid, "#64748b"), line=dict(color="#000000", width=0.8)),
                 text=[f"{int(v):,}".replace(",", ".") for v in sub_u["Qtd"]],
                 textposition="outside",
                 textfont=dict(size=10, color="#000000", family="Arial Black"),
@@ -409,3 +415,85 @@ def render_secao_expedicao_geral(df_exp_geral: pd.DataFrame):
             height=430,
             hide_index=True,
         )
+
+    # =========================================================================
+    # 7. NOVO GRÁFICO: EXPEDIÇÕES POR PERÍODO SELECIONADO (MATRIZ VS. FILIAIS)
+    # =========================================================================
+    st.markdown("---")
+    df_dyn = df_periodo.copy()
+    if cliente_sel != "Todos os Clientes":
+        df_dyn = df_dyn[df_dyn["Cliente"] == cliente_sel].copy()
+
+    if tipo_filtro == "Por Mês":
+        titulo_dyn = f"### 🧭 Expedições no Mês Selecionado ({mes_sel}) — Matriz vs. Filiais (Dia a Dia)"
+        df_dyn["Eixo_X"] = df_dyn["DATA"].dt.strftime("%d/%m")
+        df_dyn["Ordem_X"] = df_dyn["DATA"]
+    elif tipo_filtro == "Por Semana do Ano":
+        titulo_dyn = f"### 🧭 Expedições na Semana Selecionada ({semana_sel}) — Matriz vs. Filiais (Dia a Dia)"
+        dias_pt = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
+        df_dyn["Eixo_X"] = df_dyn["DATA"].dt.strftime("%d/%m") + " (" + df_dyn["DATA"].dt.dayofweek.map(dias_pt) + ")"
+        df_dyn["Ordem_X"] = df_dyn["DATA"]
+    else:
+        titulo_dyn = (
+            f"### 🧭 Expedições no Período Selecionado ({dt_inicio.strftime('%d/%m/%Y')} a {dt_fim.strftime('%d/%m/%Y')}) "
+            "— Matriz vs. Filiais"
+        )
+        df_dyn["Eixo_X"] = df_dyn["DATA"].dt.strftime("%d/%m")
+        df_dyn["Ordem_X"] = df_dyn["DATA"]
+
+    st.markdown(titulo_dyn)
+
+    df_dyn_grp = (
+        df_dyn.groupby(["Ordem_X", "Eixo_X", "Filial_Nome"], as_index=False)["Num.NF"]
+        .count()
+        .rename(columns={"Num.NF": "Qtd"})
+        .sort_values("Ordem_X")
+        .reset_index(drop=True)
+    )
+
+    if not df_dyn_grp.empty:
+        ordem_categorias = df_dyn_grp.drop_duplicates("Eixo_X")["Eixo_X"].tolist()
+        max_dyn = max(int(df_dyn_grp["Qtd"].max()), 10)
+
+        fig_dyn = go.Figure()
+        for unid in sorted(df_dyn_grp["Filial_Nome"].unique()):
+            sub_unid = df_dyn_grp[df_dyn_grp["Filial_Nome"] == unid]
+            fig_dyn.add_trace(
+                go.Bar(
+                    x=sub_unid["Eixo_X"],
+                    y=sub_unid["Qtd"],
+                    name=unid,
+                    marker=dict(color=CORES_UNIDADES.get(unid, "#64748b"), line=dict(color="#000000", width=0.8)),
+                    text=[str(int(v)) for v in sub_unid["Qtd"]],
+                    textposition="outside",
+                    textfont=dict(size=10, color="#000000", family="Arial Black"),
+                    cliponaxis=False,
+                    hovertemplate=f"<b>%{{x}} — {unid}</b><br>NFs Expedidas: %{{y}}<extra></extra>",
+                )
+            )
+
+        fig_dyn.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#000000", size=12, family="Arial"),
+            height=480,
+            margin=dict(l=45, r=30, t=55, b=60),
+            barmode="group",
+            bargap=0.20,
+            xaxis=dict(
+                type="category",
+                categoryorder="array",
+                categoryarray=ordem_categorias,
+                tickangle=-35,
+                tickfont=dict(size=11, color="#000000"),
+            ),
+            yaxis=dict(
+                title=dict(text="<b>Qtd. NFs Expedidas (Matriz vs. Filiais)</b>", font=dict(size=13, color="#000000")),
+                showgrid=True,
+                gridcolor="#e9ecef",
+                range=[0, max_dyn * 1.26],
+            ),
+            legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
+        )
+        st.plotly_chart(fig_dyn, use_container_width=True)
