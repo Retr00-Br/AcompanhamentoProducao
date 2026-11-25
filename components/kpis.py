@@ -7,7 +7,11 @@ def _fmt_brl(val: float) -> str:
     return f"{sinal}R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def render_kpis_gerais(df_filtrado: pd.DataFrame, unidade_selecionada: str = "Todas as Unidades (Geral)"):
+def render_kpis_gerais(
+    df_filtrado: pd.DataFrame,
+    unidade_selecionada: str = "Todas as Unidades (Geral)",
+    df_fat_detalhado: pd.DataFrame = None,
+):
     if df_filtrado is None or df_filtrado.empty:
         return
 
@@ -30,7 +34,6 @@ def render_kpis_gerais(df_filtrado: pd.DataFrame, unidade_selecionada: str = "To
     else:
         val_fat = df_filtrado[col_fat].sum() if col_fat in df_filtrado.columns else 0.0
         if unidade_selecionada == "Todas as Unidades (Geral)":
-            # Caso o parser antigo ainda tenha gravado o líquido na coluna _Fat
             fat_liquido = val_fat
             fat_bruto = fat_liquido + dev_abs
         else:

@@ -37,14 +37,18 @@ def render_graficos_producao(
     filtro_ativo = (filial_sel != "Todas as Filiais") or (cliente_sel != "Todos os Clientes")
 
     # =========================================================================
-    # 1. PRODUÇÃO DIÁRIA ISOLADA: NOTAS SAUDÁVEIS VS. BACKLOG (GERAL DO GALPÃO)
+    # 1. PRODUÇÃO DIÁRIA ISOLADA: NOTAS SAUDÁVEIS VS. BACKLOG
     # =========================================================================
     st.markdown("---")
     st.markdown("### 🏭 Produção Diária Isolada: Notas Saudáveis vs. Backlog")
     if filtro_ativo:
-        st.caption("ℹ️ *Os indicadores de Produção (Saudável x Backlog) representam o volume global do armazém; os filtros de Filial e Cliente aplicam-se diretamente aos gráficos e tabelas de Expedição abaixo.*")
+        st.caption(
+            "ℹ️ *Os indicadores de Produção (Saudável x Backlog) refletem o volume global do galpão; "
+            "os filtros de Filial e Cliente aplicam-se diretamente aos gráficos e tabelas de Expedição abaixo.*"
+        )
 
     fig_sb = go.Figure()
+
     fig_sb.add_trace(
         go.Bar(
             x=df_p["Data_Str"],
@@ -58,6 +62,7 @@ def render_graficos_producao(
             hovertemplate="<b>Data: %{x}</b><br>Notas Saudáveis: %{y}<extra></extra>",
         )
     )
+
     fig_sb.add_trace(
         go.Bar(
             x=df_p["Data_Str"],
@@ -73,6 +78,7 @@ def render_graficos_producao(
     )
 
     max_sb = max(df_p["Saudavel"].max(), df_p["Backlog"].max(), 10)
+
     fig_sb.update_layout(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -91,13 +97,14 @@ def render_graficos_producao(
         xaxis=dict(type="category", tickangle=-45, tickfont=dict(size=11, color="#000000")),
         legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
     )
+
     st.plotly_chart(fig_sb, use_container_width=True)
 
     # =========================================================================
-    # 2. RELAÇÃO DIÁRIA: NOTAS REALIZADAS VS. VOLUME EXPEDIDO (C/ FILTRO)
+    # 2. RELAÇÃO DIÁRIA: NOTAS REALIZADAS VS. VOLUME EXPEDIDO
     # =========================================================================
     st.markdown("---")
-    subtitulo_filtro = f" ({filial_sel} | {cliente_sel})" if filtro_ativo else ""
+    subtitulo_filtro = f" — {filial_sel} | {cliente_sel}" if filtro_ativo else ""
     st.markdown(f"### 📊 Relação Diária: Notas Realizadas vs. Volume Expedido{subtitulo_filtro}")
 
     fig_exp = go.Figure()
@@ -136,6 +143,7 @@ def render_graficos_producao(
         df_p["Total_Expedidos"].max(),
         10,
     )
+
     fig_exp.update_layout(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -154,10 +162,11 @@ def render_graficos_producao(
         xaxis=dict(type="category", tickangle=-45, tickfont=dict(size=11, color="#000000")),
         legend=dict(orientation="h", y=1.12, x=1, xanchor="right", font=dict(size=12, color="#000000")),
     )
+
     st.plotly_chart(fig_exp, use_container_width=True)
 
     # =========================================================================
-    # 3. ANÁLISE DETALHADA EXPEDIÇÃO GERAL (TOP 10 CLIENTES & ROMANEIOS)
+    # 3. DETALHAMENTO EXPEDIÇÃO GERAL (TOP 10 CLIENTES & ROMANEIOS)
     # =========================================================================
     if df_exp_detalhado is not None and not df_exp_detalhado.empty:
         st.markdown("---")
