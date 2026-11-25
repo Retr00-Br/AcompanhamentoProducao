@@ -477,3 +477,53 @@ def load_treated_data_cached():
     df_fat_clientes, df_fat_bruto = load_dados_faturamento(sig)
     df_frete = load_dados_frete(sig)
     return df_prod, df_rom, df_fat_clientes, df_fat_bruto, df_frete
+
+FILIAL_EXP_LABELS = {
+    "101": "0101 - Matriz",
+    "102": "0102 - Filial RJ",
+    "103": "0103 - Filial CP",
+    "104": "0104 - Filial SBC",
+    "106": "0106 - Filial 106",
+}
+
+
+def _normalizar_filial_exp(val) -> str:
+    s = str(val).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    s_clean = s.lstrip("0")
+    return FILIAL_EXP_LABELS.get(s_clean, f"{s.zfill(4)} - Filial {s_clean}")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_expedicao_geral(_sig: str = "") -> pd.DataFrame:
+    """Carrega a planilha data/ExpedicaoGeral.xlsx (aba Plan1) detalhada por Filial e Cliente."""
+    filepath = get_data_filepath("ExpedicaoGeral.xlsx")
+    if not filepath:
+        return pd.DataFrame()
+
+    try:
+        excel = pd.ExcelFile(filepath)
+        sheet_target = "Plan1" if "Plan1" in excel.sheet_names else excel.sheet_names[0]
+        df = pd.read_excel(excel, sheet_name=sheet_target)
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        df.columns = [str(c).strip() for c in df.columns]
+
+        df["DATA"] = pd.to_datetime(df["Dt. Romaneio"], errors="coerce").dt.normalize()
+        df["Filial_Nome"] = df["Filial"].apply(_normalizar_filial_exp) if "Filial" in df.columns else "0101 - Matriz"
+        df["Cliente"] = (
+            df["Nome Fantasia"].fillna("NÃO INFORMADO").astype(str).str.strip().str.upper()
+            if "Nome Fantasia" in df.columns
+            else "NÃO INFORMADO"
+        )
+        df["Num.NF"] = df["Num.NF"].astype(str).str.replace(".0", "", regex=False).str.strip() if "Num.NF" in df.columns else "-"
+        df["Num.PV"] = df["Num.PV"].fillna(0).apply(lambda x: str(int(float(x))) if str(x).replace(".", "", 1).isdigit() and float(x) > 0 else "-") if "Num.PV" in df.columns else "-"
+
+        df = df.dropna(subset=["DATA"]).sort_values("DATA").reset_index(drop=True)
+        return df
+
+    except Exception as e:
+        st.error(f"Erro ao carregar ExpedicaoGeral.xlsx: {e}")
+        return pd.DataFrame()
