@@ -162,6 +162,114 @@ def load_dados_romaneios(_sig: str = "") -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
+def load_dados_expedicao_geral(_sig: str = "") -> pd.DataFrame:
+    """Carrega data/ExpedicaoGeral.xlsx com normalização automática de filiais, datas e números de PV/NF."""
+    filepath = get_data_filepath("ExpedicaoGeral.xlsx")
+    if not filepath:
+        return pd.DataFrame()
+
+    try:
+        excel = pd.ExcelFile(filepath)
+        dfs = []
+
+        mapa_filiais = {
+            "0101": "0101 - Matriz",
+            "101": "0101 - Matriz",
+            "MATRIZ": "0101 - Matriz",
+            "0102": "0102 - Filial RJ",
+            "102": "0102 - Filial RJ",
+            "RJ": "0102 - Filial RJ",
+            "0103": "0103 - Filial CP",
+            "103": "0103 - Filial CP",
+            "CP": "0103 - Filial CP",
+            "0106": "0106 - Filial 106",
+            "106": "0106 - Filial 106",
+        }
+
+        def _normalizar_filial(val) -> str:
+            s = str(val).strip().upper()
+            if not s or s in ["NAN", "NONE", ""]:
+                return "NÃO INFORMADA"
+            for cod, nome_fmt in mapa_filiais.items():
+                if s == cod or s.startswith(f"{cod} ") or s.startswith(f"{cod}-"):
+                    return nome_fmt
+            return str(val).strip()
+
+        def _normalizar_doc(val) -> str:
+            if pd.isna(val):
+                return ""
+            s = str(val).strip()
+            if s.endswith(".0"):
+                s = s[:-2]
+            return s.lstrip("0") or s
+
+        for sheet in excel.sheet_names:
+            df_sheet = pd.read_excel(excel, sheet_name=sheet)
+            if df_sheet is None or df_sheet.empty:
+                continue
+
+            df_sheet.columns = [str(c).strip() for c in df_sheet.columns]
+            df_sheet["Aba_Origem"] = str(sheet).strip()
+
+            # Normalização de Filial
+            col_filial = next(
+                (c for c in df_sheet.columns if any(k in c.upper() for k in ["FILIAL", "UNIDADE", "EMPRESA"])),
+                None,
+            )
+            if col_filial:
+                df_sheet["Filial_Norm"] = df_sheet[col_filial].apply(_normalizar_filial)
+            else:
+                df_sheet["Filial_Norm"] = _normalizar_filial(sheet)
+
+            # Normalização de Datas
+            for c in df_sheet.columns:
+                c_up = c.upper()
+                if any(k in c_up for k in ["DATA", "DT.", "DT ", "EMISSAO", "EMISSÃO", "ROMANEIO", "EXPED"]):
+                    df_sheet[c] = pd.to_datetime(df_sheet[c], dayfirst=True, errors="coerce").dt.normalize()
+
+            col_data_principal = next(
+                (
+                    c
+                    for c in df_sheet.columns
+                    if c != "Filial_Norm"
+                    and pd.api.types.is_datetime64_any_dtype(df_sheet[c])
+                ),
+                None,
+            )
+            if col_data_principal:
+                df_sheet["DATA"] = df_sheet[col_data_principal]
+            else:
+                df_sheet["DATA"] = pd.NaT
+
+            # Normalização de PV e NF
+            for c in df_sheet.columns:
+                c_up = c.upper()
+                if c_up in ["PV", "PEDIDO", "NUM_PV", "NUMERO PV", "NÚMERO PV"]:
+                    df_sheet["PV_Norm"] = df_sheet[c].apply(_normalizar_doc)
+                elif c_up in ["NF", "NOTA", "NOTA FISCAL", "NUM_NF", "NUMERO NF", "NÚMERO NF"]:
+                    df_sheet["NF_Norm"] = df_sheet[c].apply(_normalizar_doc)
+
+            if "PV_Norm" not in df_sheet.columns:
+                df_sheet["PV_Norm"] = ""
+            if "NF_Norm" not in df_sheet.columns:
+                df_sheet["NF_Norm"] = ""
+
+            dfs.append(df_sheet)
+
+        if not dfs:
+            return pd.DataFrame()
+
+        df_out = pd.concat(dfs, ignore_index=True)
+        if "DATA" in df_out.columns and df_out["DATA"].notna().any():
+            df_out = df_out.sort_values("DATA", ascending=False).reset_index(drop=True)
+        return df_out
+
+    except Exception as e:
+        st.error(f"Erro ao carregar ExpedicaoGeral.xlsx: {e}")
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def load_dados_faturamento(_sig: str = ""):
     """Carrega tanto o Faturamento Bruto por filial quanto o Faturamento Detalhado por Cliente."""
     filepath = get_data_filepath("DadosFaturamento.xlsx")
@@ -334,7 +442,6 @@ def load_dados_sla(_sig: str = "") -> pd.DataFrame:
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Corrige eventuais caracteres UTF-8 lidos como latin1 (ex: LOGÃ\x8dSTICA -> LOGÍSTICA)
     for col_txt in ["Cliente", "Transport."]:
         if col_txt in df.columns:
             df[col_txt] = (
@@ -352,7 +459,6 @@ def load_dados_sla(_sig: str = "") -> pd.DataFrame:
     df["Dt_Romaneio"] = pd.to_datetime(df.get("Dt. Romaneio"), dayfirst=True, errors="coerce").dt.normalize()
     df["Dt_Entrega_Real"] = pd.to_datetime(df.get("Dt. Entrega Real"), dayfirst=True, errors="coerce").dt.normalize()
 
-    # Trata datas placeholder 01/01/1900 como sem previsão cadastrada
     df.loc[df["Dt_Previsao"].dt.year < 2020, "Dt_Previsao"] = pd.NaT
 
     if "NF" in df.columns:
