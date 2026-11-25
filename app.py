@@ -5,6 +5,7 @@ import streamlit as st
 from utils.loader import (
     load_treated_data_cached,
     load_dados_sla,
+    load_dados_expedicao_geral,
 )
 from utils.parser import parse_faturamento_filiais
 from components.ui_config import DashboardUI
@@ -15,13 +16,7 @@ from components.charts_frete import render_secao_frete
 from components.tables import render_top10_faturamento, render_tabela_consolidada
 from components.sla_farol import render_secao_sla
 from components.forecast_ds import render_secao_previsao_ds, render_secao_previsao_vs_real
-from components.forecast_ds import render_secao_previsao_ds
-
-try:
-    from components.forecast_ds import render_secao_previsao_vs_real
-except ImportError:
-    def render_secao_previsao_vs_real(df_diario):
-        st.warning("⚠️ Atualize o arquivo `components/forecast_ds.py` no repositório para habilitar a aba Previsão X Real.")
+from components.expedicao_geral import render_secao_expedicao_geral
 
 st.set_page_config(
     page_title="Dashboard Operacional & BI - Higimed",
@@ -130,7 +125,6 @@ def build_processed_dataset(_sig: str = ""):
 
     df_fat_unidades = parse_faturamento_filiais(df_fat_bruto_raw)
 
-    # 1. Base Produção
     df_diario = df_prod_tratado.copy()
 
     renames = {}
@@ -150,7 +144,6 @@ def build_processed_dataset(_sig: str = ""):
 
     df_diario["DATA"] = pd.to_datetime(df_diario["DATA"], errors="coerce").dt.normalize()
 
-    # 2. Romaneios / Expedição
     if df_rom_tratado is not None and not df_rom_tratado.empty:
         col_exp = "Qtd. Expedição" if "Qtd. Expedição" in df_rom_tratado.columns else df_rom_tratado.columns[1]
         df_r = df_rom_tratado.groupby("DATA")[col_exp].sum().reset_index(name="Total_Expedidos")
@@ -159,12 +152,10 @@ def build_processed_dataset(_sig: str = ""):
     else:
         df_diario["Total_Expedidos"] = 0
 
-    # 3. Faturamento
     if df_fat_unidades is not None and not df_fat_unidades.empty:
         df_fat_unidades["DATA"] = pd.to_datetime(df_fat_unidades["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_fat_unidades, on="DATA", how="outer")
 
-    # 4. Frete Terceirizado
     if df_frete_tratado is not None and not df_frete_tratado.empty:
         df_frete_agg = (
             df_frete_tratado.groupby("DATA")["Valor Total Frete"]
@@ -174,7 +165,6 @@ def build_processed_dataset(_sig: str = ""):
         df_frete_agg["DATA"] = pd.to_datetime(df_frete_agg["DATA"], errors="coerce").dt.normalize()
         df_diario = pd.merge(df_diario, df_frete_agg, on="DATA", how="outer")
 
-    # Preenchimento numérico pós-merge
     colunas_num = df_diario.select_dtypes(include=["number", "float64", "int64"]).columns
     df_diario[colunas_num] = df_diario[colunas_num].fillna(0.0)
 
@@ -196,17 +186,16 @@ def main():
     sig = get_local_files_signature()
     df_diario, df_fat_detalhado, df_frete_tratado = build_processed_dataset(sig)
     df_sla = load_dados_sla(sig)
+    df_exp_geral = load_dados_expedicao_geral(sig)
 
     if df_diario is None or df_diario.empty:
         st.info("📂 **Aguardando dados no Back-End:** Insira as planilhas no diretório `./data/` para sincronização.")
         st.stop()
 
-    # =========================================================================
-    # 🗂️ ORGANIZAÇÃO EM ABAS ESPECÍFICAS
-    # =========================================================================
-    tab_fat, tab_prod, tab_frete, tab_sla, tab_prev, tab_pvr, tab_tabela = st.tabs([
+    tab_fat, tab_prod, tab_exp_geral, tab_frete, tab_sla, tab_prev, tab_pvr, tab_tabela = st.tabs([
         "💰 Faturamento & Clientes",
         "🏭 Produção & Expedição",
+        "📦 Expedição Geral",
         "🚚 Custo de Frete",
         "🚦 Farol SLA & Operação",
         "🔮 Previsão & Data Science",
@@ -235,8 +224,8 @@ def main():
             key="unidade_sel_fat_isolado",
         )
 
-        render_kpis_gerais(df_filtrado_fat, unidade_selecionada)
-        render_secao_faturamento(df_filtrado_fat, unidade_selecionada)
+        render_kpis_gerais(df_filtrado_fat, unidade_selecionada, df_fat_detalhado)
+        render_secao_faturamento(df_filtrado_fat, unidade_selecionada, df_diario)
         render_top10_faturamento(df_fat_detalhado, unidade_selecionada)
 
     with tab_prod:
@@ -259,7 +248,10 @@ def main():
         )
 
         render_kpis_medias(df_filtrado_prod, "Todas as Unidades (Geral)")
-        render_graficos_producao(df_filtrado_prod, "Todas as Unidades (Geral)_Fat", "Todas as Unidades (Geral)")
+        render_graficos_producao(df_filtrado_prod, "Todas as Unidades (Geral)_Fat", "Todas as Unidades (Geral)", df_diario)
+
+    with tab_exp_geral:
+        render_secao_expedicao_geral(df_exp_geral)
 
     with tab_frete:
         render_secao_frete(df_diario, "Todas as Unidades (Geral)_Fat", df_frete_tratado)
